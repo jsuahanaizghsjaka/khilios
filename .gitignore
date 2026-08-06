@@ -1,0 +1,21 @@
+# Секреты и локальные конфиги
+node.env
+*.env
+!*.env.example
+secrets/
+*.key
+*.pem
+authorized_keys
+
+# Бэкапы и дампы
+*.sql
+*.sql.gz
+*.tar.gz
+backups/
+
+# Мусор
+.DS_Store
+*.log
+node_modules/
+.next/
+.vercel
