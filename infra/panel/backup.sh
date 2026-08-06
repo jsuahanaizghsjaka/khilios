@@ -50,12 +50,22 @@ log "Готово: $OUT ($(du -h "$OUT" | cut -f1))"
 
 if [[ -n "$REMOTE" ]]; then
   log "Выгрузка на $REMOTE"
-  rsync -a --timeout=60 "$OUT" "$REMOTE/" && log "Выгружено" || log "ОШИБКА выгрузки — бэкап только локальный"
+  if rsync -a --timeout=60 "$OUT" "$REMOTE/"; then
+    log "Выгружено"
+  else
+    log "ОШИБКА выгрузки — бэкап только локальный"
+  fi
 else
   log "ВНИМАНИЕ: REMOTE не задан, бэкап лежит на той же машине, что и панель"
 fi
 
 log "Чищу старые, оставляю $KEEP"
-ls -1t "$BACKUP_DIR"/panel-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
+# Имена вида panel-YYYYmmdd-HHMMSS.tar.gz, поэтому сортировка по алфавиту
+# совпадает с сортировкой по времени. sort -r — новые сверху, tail — всё лишнее.
+mapfile -t stale < <(find "$BACKUP_DIR" -maxdepth 1 -name 'panel-*.tar.gz' | sort -r | tail -n +$((KEEP + 1)))
+if ((${#stale[@]} > 0)); then
+  rm -f "${stale[@]}"
+  log "Удалено: ${#stale[@]}"
+fi
 
-log "Всего копий: $(ls -1 "$BACKUP_DIR"/panel-*.tar.gz 2>/dev/null | wc -l)"
+log "Всего копий: $(find "$BACKUP_DIR" -maxdepth 1 -name 'panel-*.tar.gz' | wc -l)"
