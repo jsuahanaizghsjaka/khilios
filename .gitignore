@@ -2,6 +2,9 @@
 node.env
 *.env
 !*.env.example
+# Next.js кладёт секреты в .env.local — под *.env он не попадает
+.env.local
+.env*.local
 secrets/
 *.key
 *.pem
