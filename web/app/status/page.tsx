@@ -60,29 +60,37 @@ export default async function Status() {
 
       {doc && (
         <>
-          <table className="status-table">
-            <thead>
-              <tr>
-                <th>Узел</th>
-                <th>Регион</th>
-                <th>Состояние</th>
-                <th>Проверен</th>
-              </tr>
-            </thead>
-            <tbody>
-              {doc.nodes.map((node) => (
-                <tr key={node.name}>
-                  <td>{node.name}</td>
-                  <td>{node.region}</td>
-                  <td className={`state-${node.state}`}>
-                    <span className="dot" aria-hidden="true" />
-                    {STATE_LABEL[node.state]}
-                  </td>
-                  <td className="muted">{formatTime(node.checked_at)}</td>
+          {/* Таблица уезжает в собственную прокрутку на узком экране,
+              чтобы страница целиком не ехала вбок. */}
+          <div className="table-scroll">
+            <table className="status-table">
+              <thead>
+                <tr>
+                  <th scope="col">Узел</th>
+                  <th scope="col">Регион</th>
+                  <th scope="col">Состояние</th>
+                  <th scope="col">Проверен</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {doc.nodes.map((node) => (
+                  <tr key={node.name}>
+                    <td>{node.name}</td>
+                    <td>{node.region}</td>
+                    <td>
+                      {/* Кружок дублируется словом: по одному цвету
+                          состояние не прочитает дальтоник. */}
+                      <span className={`state state-${node.state}`}>
+                        <span className="dot" aria-hidden="true" />
+                        {STATE_LABEL[node.state]}
+                      </span>
+                    </td>
+                    <td>{formatTime(node.checked_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <p className="small muted">
             Обновлено {formatTime(doc.generated_at)} по московскому времени.

@@ -25,6 +25,8 @@ export type Plan = {
   featured?: boolean;
 };
 
+// period — готовая строка для показа, а не единица измерения:
+// подставлять предлог в шаблоне пришлось бы с исключением на пробный тариф.
 export const PLANS: Plan[] = [
   {
     id: "trial",
@@ -38,14 +40,14 @@ export const PLANS: Plan[] = [
     id: "basic",
     name: "Базовый",
     price: 199,
-    period: "месяц",
+    period: "в месяц",
     devices: 2,
   },
   {
     id: "standard",
     name: "Стандарт",
     price: 299,
-    period: "месяц",
+    period: "в месяц",
     devices: 5,
     featured: true,
   },
@@ -53,7 +55,7 @@ export const PLANS: Plan[] = [
     id: "year",
     name: "Год",
     price: 1990,
-    period: "год",
+    period: "в год",
     devices: 5,
     note: "166 ₽ в месяц.",
   },
