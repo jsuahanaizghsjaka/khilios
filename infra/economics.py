@@ -13,9 +13,14 @@ import argparse
 PRICE = 299          # тариф «Стандарт», ₽/мес
 ACQUIRING = 0.05     # комиссия платёжной системы
 TAX = 0.04           # НПД при продаже физлицам
-PANEL = 700          # панельная VPS, ₽/мес
-NODE = 500           # нода, ₽/мес (средняя по ЕС; Швейцария дороже, см. scaling.md)
 USERS_PER_NODE = 40  # техническая ёмкость одной ноды
+
+# Цены VPS ниже, чем прикидка по памяти: рынок в 2026 даёт €2–4,5 за машину,
+# годную под ноду, а промо-тарифы уходят к €2. Здесь стоит список, а не промо:
+# промо кончается, и планировать по нему — способ через месяц не сойтись.
+# Свои цифры подставляются флагами --panel-cost и --node-cost.
+PANEL = 400          # панельная VPS, ₽/мес
+NODE = 350           # нода, ₽/мес по списочной цене
 
 
 def net_per_user(price: int = PRICE) -> float:
@@ -41,7 +46,15 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--nodes", type=int, help="разобрать один вариант")
     ap.add_argument("--users", type=int, default=30, help="сколько платящих (по умолчанию цель плана)")
+    ap.add_argument("--node-cost", type=int, help="своя цена ноды, ₽/мес")
+    ap.add_argument("--panel-cost", type=int, help="своя цена панели, ₽/мес")
     args = ap.parse_args()
+
+    global NODE, PANEL
+    if args.node_cost:
+        NODE = args.node_cost
+    if args.panel_cost:
+        PANEL = args.panel_cost
 
     n = net_per_user()
     print(f"Тариф {PRICE} ₽, чистыми с платящего {n:.0f} ₽ "
