@@ -206,6 +206,16 @@ $ADMIN_HOST {
 # Страница подписки. Открыта всем, но только по пути подписки:
 # на этом же имени не должно быть ничего лишнего.
 $SUB_HOST {
+	# status.json для публичной страницы статуса на сайте.
+	# Его генерирует status-json.sh раз в 5 минут, а сайт читает по STATUS_URL.
+	# Отдаётся статикой, мимо панели: страница статуса должна пережить
+	# ровно тот случай, ради которого её и заводят — когда панели плохо.
+	# Наружу уходят только имя узла, регион и состояние, адресов в файле нет.
+	handle /status/* {
+		root * /var/www
+		file_server
+	}
+
 	handle $SUB_PATH* {
 		reverse_proxy 127.0.0.1:3000
 	}
@@ -240,6 +250,10 @@ systemctl reload caddy 2>/dev/null || systemctl restart caddy
 log "Бэкапы и генератор статуса в cron"
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 install -d -m 755 /etc/khilios
+
+# Каталог создаём здесь, а не в status-json.sh: Caddy отдаёт его статикой,
+# и без каталога первый же запрос до первого крона получил бы 404.
+install -d -m 755 /var/www /var/www/status
 
 [[ -f /etc/khilios/nodes.conf ]] || cat > /etc/khilios/nodes.conf <<'EOF'
 # имя|регион|адрес|порт  — адреса наружу не уходят, см. status-json.sh
@@ -284,6 +298,8 @@ cat <<EOF
  IP:        $PUBLIC_IP
  Админка:   https://$ADMIN_HOST   (только с $ADMIN_IP)
  Подписка:  https://$SUB_HOST$SUB_PATH
+ Статус:    https://$SUB_HOST/status/status.json
+            это значение идёт в STATUS_URL на Vercel
  SSH:       ssh -p $SSH_PORT root@$PUBLIC_IP
 
  Дальше:
@@ -293,7 +309,9 @@ cat <<EOF
    2. Открыть админку, создать администратора СРАЗУ.
       Панель со свободной регистрацией = чужая панель
    3. Nodes -> Create, скопировать SSL_CERT, дальше deploy-node.sh на ноде
-   4. Вписать ноды в /etc/khilios/nodes.conf для страницы статуса
+   4. Вписать ноды в /etc/khilios/nodes.conf, прогнать status-json.sh
+      руками и открыть https://$SUB_HOST/status/status.json в браузере.
+      Пустой ответ здесь = пустая страница статуса на сайте
    5. Заполнить REMOTE в backup.sh, иначе бэкап лежит рядом с панелью
       и не спасает ровно в том случае, ради которого делается
    6. Учения: восстановить панель из бэкапа на чистую VPS, засечь время

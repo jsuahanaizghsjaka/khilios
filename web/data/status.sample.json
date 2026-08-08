@@ -1,23 +1,23 @@
 {
-  "generated_at": "2026-08-06T15:00:00Z",
+  "generated_at": "2026-08-08T15:00:00Z",
   "nodes": [
+    {
+      "name": "se-1",
+      "region": "Швеция",
+      "state": "up",
+      "checked_at": "2026-08-08T15:00:00Z"
+    },
     {
       "name": "fi-1",
       "region": "Финляндия",
       "state": "up",
-      "checked_at": "2026-08-06T15:00:00Z"
+      "checked_at": "2026-08-08T15:00:00Z"
     },
     {
-      "name": "nl-1",
+      "name": "eu-1",
       "region": "Нидерланды",
-      "state": "up",
-      "checked_at": "2026-08-06T15:00:00Z"
-    },
-    {
-      "name": "de-1",
-      "region": "Германия",
       "state": "degraded",
-      "checked_at": "2026-08-06T15:00:00Z"
+      "checked_at": "2026-08-08T15:00:00Z"
     }
   ]
 }
