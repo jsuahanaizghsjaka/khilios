@@ -1,9 +1,14 @@
-/* Дизайн-система: тёмная, минималистичная, «дизайнерская».
-   Основа — чистый чёрный фон, как у сферы-героя: страница и главный визуал
-   должны быть из одного материала, без видимого стыка. Цвет почти не
-   используется — только холодный стальной акцент, эхо подсветки сферы,
-   и три статусных цвета для узлов. Всё остальное держится на типографике,
-   воздухе и волосяных линиях. */
+/* Дизайн-система: тёмная, минималистичная, спокойная для глаз.
+
+   Про контраст. Чистый чёрный фон с чистым белым текстом даёт ~21:1 — по
+   формальной доступности отлично, а читать больно: на OLED белые буквы
+   «звенят» и оставляют след при прокрутке. Поэтому фон не #000, а очень
+   тёмный графит, и текст не #fff, а тёплый off-white. Получается ~13:1 —
+   это всё ещё сильно выше нормы AA (4.5:1), но глаз не режет.
+
+   Цвета почти нет: один холодный сине-фиолетовый акцент и три статусных
+   цвета для узлов. Всё остальное держится на типографике, воздухе и
+   волосяных линиях. */
 
 :root {
   color-scheme: dark;
@@ -13,40 +18,49 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
+  --space-20: 80px;
   --space-24: 96px;
   --space-32: 128px;
 
-  --radius: 14px;
+  --radius: 16px;
   --radius-sm: 10px;
+  --radius-lg: 22px;
 
-  --bg: #000000;
-  --bg-soft: #060709;
-  --surface: #0c0e12;
-  --surface-2: #14171d;
-  --fg: #f1f3f6;
-  --fg-muted: #8b929d;
-  --fg-dim: #5c626d;
-  --line: rgba(255, 255, 255, 0.09);
-  --line-strong: rgba(255, 255, 255, 0.17);
+  --bg: #0b0c0f;
+  --bg-lift: #0f1116;
+  --surface: #14161c;
+  --surface-2: #1b1e26;
+  --fg: #e3e6ea;
+  --fg-muted: #99a0ac;
+  /* Не темнее этого: на фоне карточки даёт 4.9:1, то есть проходит AA
+     даже для мелких подписей в 13px. Прошлое значение давало 3.8 —
+     красиво на макете и нечитаемо на плохом экране. */
+  --fg-dim: #7d8593;
+  --line: rgba(255, 255, 255, 0.075);
+  --line-strong: rgba(255, 255, 255, 0.15);
 
-  /* Стальной акцент — тот же холодный свет, что ложится на шипы сферы. */
-  --accent: #86b2ff;
-  --accent-soft: rgba(134, 178, 255, 0.14);
+  /* Мягкий барвинковый акцент. Достаточно яркий, чтобы вести взгляд,
+     и достаточно приглушённый, чтобы не жечь на тёмном. */
+  --accent: #8fa6ff;
+  --accent-dim: #7186d8;
+  --accent-soft: rgba(143, 166, 255, 0.12);
+  --accent-line: rgba(143, 166, 255, 0.32);
 
-  /* Главная кнопка — белая: самый тихий и самый заметный CTA на чёрном. */
-  --primary: #f4f5f7;
-  --primary-hover: #ffffff;
-  --on-primary: #06070a;
+  --on-accent: #0a0b0e;
 
-  --ok: #34d399;
-  --warn: #fbbf24;
+  /* Статусы приглушены относительно «неоновых»: на тёмном они и так
+     хорошо читаются, а полная насыщенность бьёт по глазам. */
+  --ok: #4ade80;
+  --warn: #f5c451;
   --bad: #f87171;
 
-  --ring: #86b2ff;
+  --ring: #8fa6ff;
 
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo,
     Consolas, monospace;
@@ -58,11 +72,12 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  /* clip, а не hidden: полноширинный герой выходит за 100% без появления
+  /* clip, а не hidden: полноширинные секции выходят за 100% без появления
      горизонтальной прокрутки, и при этом sticky-шапка не ломается. */
   overflow-x: clip;
   background: var(--bg);
@@ -88,7 +103,7 @@ body {
 a {
   color: var(--accent);
   text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-bottom: 1px solid var(--accent-line);
   transition: border-color 160ms ease, color 160ms ease;
 }
 
@@ -97,9 +112,15 @@ a:hover {
 }
 
 .wrap {
-  max-width: 820px;
+  max-width: 940px;
   margin: 0 auto;
   padding: 0 var(--space-6);
+}
+
+/* Секции во всю ширину окна вырываются из центрированной колонки. */
+.bleed {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
 }
 
 /* ---------- Шапка и подвал ---------- */
@@ -109,7 +130,7 @@ a:hover {
   top: 0;
   z-index: 50;
   padding: var(--space-4) 0;
-  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   border-bottom: 1px solid var(--line);
@@ -179,7 +200,7 @@ a:hover {
 .site-foot {
   border-top: 1px solid var(--line);
   margin-top: var(--space-32);
-  padding: var(--space-8) 0 var(--space-16);
+  padding: var(--space-10) 0 var(--space-16);
   color: var(--fg-muted);
   font-size: 14px;
 }
@@ -217,11 +238,14 @@ h1 {
   max-width: 20ch;
 }
 
+/* Верхний отступ нужен на обычных страницах, где заголовки идут подряд
+   в потоке текста. На лендинге расстояние задаёт сама секция, поэтому
+   там он гасится ниже — иначе к отступу секции прибавляется ещё один. */
 h2 {
-  font-size: clamp(21px, 3vw, 26px);
-  line-height: 1.25;
-  letter-spacing: -0.02em;
-  font-weight: 600;
+  font-size: clamp(24px, 3.4vw, 34px);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  font-weight: 620;
   margin: var(--space-16) 0 var(--space-4);
 }
 
@@ -230,6 +254,13 @@ h3 {
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: var(--space-8) 0 var(--space-2);
+}
+
+.section-head h2,
+.cta h2,
+.card h3,
+.steps h3 {
+  margin-top: 0;
 }
 
 p {
@@ -253,8 +284,6 @@ p {
   font-size: 14px;
 }
 
-/* Технические подписи — моноширинный верхний регистр: даёт «инженерный»,
-   дизайнерский тон и отделяет служебное от смыслового. */
 .eyebrow {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -264,11 +293,65 @@ p {
   margin: 0 0 var(--space-4);
 }
 
-/* ---------- Герой со сферой ---------- */
+/* ---------- Секции лендинга ---------- */
+
+.section {
+  padding: clamp(var(--space-16), 11vh, var(--space-32)) 0;
+}
+
+/* Чередование фона отделяет секции без единой линии и рамки. */
+.section--lift {
+  background: var(--bg-lift);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.section-head {
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto var(--space-12);
+}
+
+/* Ограничиваем сам заголовок, а не контейнер: узкий контейнер рвал
+   короткие заголовки на три строки и ломал ритм секций. */
+.section-head h2 {
+  max-width: 22ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.section-head p {
+  color: var(--fg-muted);
+  max-width: 52ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Метка секции: короткое тире и капслок вразрядку. */
+.section-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 var(--space-4);
+}
+
+.section-label::before {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: var(--accent-line);
+}
+
+/* ---------- Герой ---------- */
 
 .hero {
   position: relative;
-  /* Выходим на всю ширину окна из центрированного .wrap. */
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-top: calc(var(--space-12) * -1);
@@ -285,8 +368,8 @@ p {
   z-index: 0;
 }
 
-/* Затемнение к низу и лёгкая виньетка по краям: спокойный фон под текст
-   и мягкий стык сферы с остальной страницей. */
+/* Затемнение к низу и мягкая виньетка: спокойный фон под текст и
+   незаметный стык сферы с остальной страницей. */
 .hero::after {
   content: "";
   position: absolute;
@@ -297,16 +380,16 @@ p {
     radial-gradient(
       120% 90% at 50% 32%,
       transparent 46%,
-      rgba(0, 0, 0, 0.55) 100%
+      rgba(0, 0, 0, 0.5) 100%
     ),
-    linear-gradient(to bottom, transparent 40%, var(--bg) 94%);
+    linear-gradient(to bottom, transparent 42%, var(--bg) 95%);
 }
 
 .hero-inner {
   position: relative;
   z-index: 2;
   width: 100%;
-  max-width: 820px;
+  max-width: 940px;
   margin: 0 auto;
   padding: 0 var(--space-6) clamp(var(--space-12), 8vh, var(--space-24));
   text-align: center;
@@ -315,9 +398,9 @@ p {
 .hero-inner h1 {
   margin-left: auto;
   margin-right: auto;
-  font-size: clamp(38px, 7vw, 76px);
+  font-size: clamp(36px, 6.4vw, 68px);
   letter-spacing: -0.035em;
-  max-width: 16ch;
+  max-width: 17ch;
 }
 
 .hero-inner .lead {
@@ -330,7 +413,6 @@ p {
   justify-content: center;
 }
 
-/* Сам холст и заглушка. */
 .sphere-hero {
   position: absolute;
   inset: 0;
@@ -346,21 +428,90 @@ p {
   position: absolute;
   inset: 0;
   display: none;
-  background:
-    radial-gradient(
-      42% 42% at 50% 46%,
-      rgba(150, 175, 210, 0.16) 0%,
-      rgba(90, 110, 150, 0.08) 45%,
-      transparent 72%
-    );
+  background: radial-gradient(
+    42% 42% at 50% 46%,
+    rgba(143, 166, 255, 0.14) 0%,
+    rgba(90, 110, 150, 0.07) 45%,
+    transparent 72%
+  );
 }
 
-/* Показываем заглушку, только если WebGL не завёлся. */
 .sphere-hero[data-fallback="true"] .sphere-canvas {
   display: none;
 }
 .sphere-hero[data-fallback="true"] .sphere-fallback {
   display: block;
+}
+
+/* ---------- Бегущая строка ---------- */
+
+.ticker {
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-lift);
+  padding: var(--space-4) 0;
+  /* Края растворяются, чтобы строка не обрывалась «ножом». */
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12%,
+    #000 88%,
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12%,
+    #000 88%,
+    transparent
+  );
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker 46s linear infinite;
+}
+
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+.ticker-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-8);
+  font-size: 14px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.ticker-item::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+@keyframes ticker {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    /* Ровно половина дорожки: список продублирован, поэтому шва не видно. */
+    transform: translate3d(-50%, 0, 0);
+  }
 }
 
 /* ---------- Кнопки ---------- */
@@ -369,27 +520,40 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 48px;
+  min-height: 50px;
   padding: var(--space-3) var(--space-8);
-  background: var(--primary);
-  color: var(--on-primary);
+  background: var(--accent);
+  color: var(--on-accent);
   border: 1px solid transparent;
   border-radius: 999px;
-  font-weight: 560;
+  font-weight: 580;
   font-size: 15px;
   letter-spacing: -0.01em;
   cursor: pointer;
   transition: background-color 160ms ease, transform 160ms ease,
-    box-shadow 160ms ease;
+    box-shadow 160ms ease, border-color 160ms ease;
 }
 
 .btn:hover {
-  background: var(--primary-hover);
+  background: #a3b6ff;
   box-shadow: 0 0 0 6px var(--accent-soft);
 }
 
 .btn:active {
   transform: scale(0.985);
+}
+
+/* Второстепенное действие: та же форма, но без заливки. */
+.btn--ghost {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--line-strong);
+}
+
+.btn--ghost:hover {
+  background: var(--surface);
+  border-color: var(--fg-dim);
+  box-shadow: none;
 }
 
 .btn[aria-disabled="true"] {
@@ -406,6 +570,98 @@ p {
   gap: var(--space-3);
   align-items: center;
   margin-bottom: var(--space-4);
+}
+
+/* ---------- Карточки-возможности ---------- */
+
+.cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-6);
+  transition: border-color 200ms ease, transform 200ms ease;
+}
+
+.card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+
+/* Иконка в скруглённом квадрате — узнаваемый приём с референса,
+   но заливка приглушённая, без градиентной «пластмассы». */
+.card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  margin-bottom: var(--space-4);
+}
+
+.card p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 15px;
+}
+
+/* ---------- Шаги ---------- */
+
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-6);
+  /* 180px, чтобы все четыре шага помещались в одну строку на десктопе:
+     при 210px последний срывался на вторую и ломал ряд. */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  counter-reset: step;
+}
+
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--line);
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 30px;
+  height: 2px;
+  background: var(--accent);
+  font-size: 0;
+}
+
+.steps .step-n {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  margin-bottom: var(--space-2);
+}
+
+.steps p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 15px;
 }
 
 /* ---------- Тарифы ---------- */
@@ -436,12 +692,8 @@ p {
 }
 
 .plan--featured {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: linear-gradient(
-    180deg,
-    var(--accent-soft) 0%,
-    var(--surface) 55%
-  );
+  border-color: var(--accent-line);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--surface) 58%);
 }
 
 .plan h3 {
@@ -456,7 +708,7 @@ p {
 
 .plan .price {
   font-size: 32px;
-  font-weight: 600;
+  font-weight: 620;
   letter-spacing: -0.03em;
   line-height: 1.05;
   color: var(--fg);
@@ -496,13 +748,13 @@ p {
   font-weight: 500;
   color: var(--accent);
   background: var(--bg);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border: 1px solid var(--accent-line);
   padding: 3px var(--space-3);
   border-radius: 999px;
   white-space: nowrap;
 }
 
-/* ---------- Список преимуществ ---------- */
+/* ---------- Список преимуществ (внутренние страницы) ---------- */
 
 .features {
   list-style: none;
@@ -543,6 +795,134 @@ p {
 }
 .reasons li::marker {
   color: var(--fg-dim);
+}
+
+/* Список с галочками — как в тарифных карточках на референсе. */
+.checks {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-4) 0 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.checks li {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  font-size: 15px;
+  color: var(--fg-muted);
+}
+
+.checks svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 6px;
+  color: var(--accent);
+}
+
+/* ---------- FAQ ---------- */
+
+.faq {
+  max-width: 720px;
+  margin: 0 auto;
+  border-top: 1px solid var(--line);
+}
+
+.faq details {
+  border-bottom: 1px solid var(--line);
+}
+
+.faq summary {
+  cursor: pointer;
+  list-style: none;
+  padding: var(--space-5) 0;
+  font-size: 17px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  transition: color 160ms ease;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary:hover {
+  color: var(--accent);
+}
+
+/* Плюс, который превращается в минус. Рисуем псевдоэлементом, чтобы не
+   тащить иконку и не городить JS. */
+.faq summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  background:
+    linear-gradient(var(--fg-muted), var(--fg-muted)) center/12px 1.5px no-repeat,
+    linear-gradient(var(--fg-muted), var(--fg-muted)) center/1.5px 12px no-repeat;
+  transition: transform 220ms ease;
+}
+
+.faq details[open] summary::after {
+  transform: rotate(135deg);
+}
+
+.faq details[open] summary {
+  color: var(--fg);
+}
+
+.faq-body {
+  padding: 0 0 var(--space-5);
+  color: var(--fg-muted);
+  max-width: 62ch;
+}
+
+.faq-body p {
+  margin: 0 0 var(--space-3);
+}
+.faq-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Финальный призыв ---------- */
+
+.cta {
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(
+      80% 120% at 50% 0%,
+      var(--accent-soft) 0%,
+      transparent 62%
+    ),
+    var(--surface);
+  padding: clamp(var(--space-10), 6vw, var(--space-20)) var(--space-6);
+}
+
+.cta h2 {
+  max-width: 20ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cta p {
+  color: var(--fg-muted);
+  max-width: 48ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cta .btn-row {
+  justify-content: center;
+  margin-top: var(--space-8);
+  margin-bottom: 0;
 }
 
 /* ---------- Статус ---------- */
@@ -603,7 +983,7 @@ p {
 }
 .state-up .dot {
   background: var(--ok);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--ok) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent);
 }
 
 .state-degraded {
@@ -611,7 +991,7 @@ p {
 }
 .state-degraded .dot {
   background: var(--warn);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--warn) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 16%, transparent);
 }
 
 .state-down {
@@ -619,7 +999,7 @@ p {
 }
 .state-down .dot {
   background: var(--bad);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--bad) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 16%, transparent);
 }
 
 .table-scroll {
@@ -649,23 +1029,22 @@ p {
 
 /* ---------- Адаптив ---------- */
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
   .plans {
     grid-template-columns: 1fr;
-  }
-  h2 {
-    margin-top: var(--space-12);
   }
   .btn {
     width: 100%;
   }
-  .hero-inner .btn-row .btn {
-    width: 100%;
+  .section-head {
+    margin-bottom: var(--space-10);
   }
 }
 
-/* Уважаем системную настройку «меньше движения»: сфера остаётся, но
-   не крутится (это уже учтено в компоненте), а переходы гасим. */
+/* Пользователь мог попросить систему убрать анимацию — например, из-за
+   вестибулярных нарушений. Бегущую строку в этом случае не «замедляем»,
+   а останавливаем полностью и отдаём как обычный список с прокруткой:
+   застывшая на полпути лента выглядела бы как сломанная вёрстка. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -674,5 +1053,18 @@ p {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  .ticker {
+    overflow-x: auto;
+  }
+
+  .ticker-track {
+    animation: none !important;
+    transform: none !important;
   }
 }

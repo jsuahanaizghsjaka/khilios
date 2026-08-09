@@ -1,19 +1,9 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { SERVICE, PLANS, REFUND_DAYS_RULE } from "@/lib/config";
+import { devices } from "@/lib/plural";
 
 export const metadata: Metadata = { title: "Тарифы" };
-
-// 1 устройство, 2 устройства, 5 устройств — правило с двумя переломами,
-// а не одним. Простое «один или много» даёт «2 устройств».
-function devices(n: number): string {
-  const mod100 = n % 100;
-  const mod10 = n % 10;
-  if (mod100 >= 11 && mod100 <= 14) return "устройств";
-  if (mod10 === 1) return "устройство";
-  if (mod10 >= 2 && mod10 <= 4) return "устройства";
-  return "устройств";
-}
 
 export default function Tariffs() {
   return (
