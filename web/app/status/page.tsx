@@ -8,6 +8,15 @@ export const metadata: Metadata = { title: "Статус узлов" };
 // свежесть проверяется отдельно — см. комментарий в lib/status.ts.
 export const revalidate = 60;
 
+// Состояние узла → тон плитки в сводке. Отдельной картой, а не подстановкой
+// в класс: имена состояний приходят из панели, и подставлять их в CSS-класс
+// напрямую значит однажды получить класс, которого нет в стилях.
+const TILE_TONE = {
+  up: "ok",
+  degraded: "warn",
+  down: "bad",
+} as const;
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
@@ -60,6 +69,29 @@ export default async function Status() {
 
       {doc && (
         <>
+          {/* Сводка перед таблицей. Человек, открывший страницу во время
+              сбоя, должен получить ответ до того, как начнёт читать строки.
+              Показываем только непустые состояния: тройка нулей рядом с
+              «работает: 3» — это шум, а не информация. */}
+          <ul className="status-summary">
+            <li className="tile">
+              <span className="num">{doc.nodes.length}</span>
+              <span className="label">узлов всего</span>
+            </li>
+            {(["up", "degraded", "down"] as const)
+              .map((state) => ({
+                state,
+                count: doc.nodes.filter((n) => n.state === state).length,
+              }))
+              .filter(({ count }) => count > 0)
+              .map(({ state, count }) => (
+                <li key={state} className={`tile tile--${TILE_TONE[state]}`}>
+                  <span className="num">{count}</span>
+                  <span className="label">{STATE_LABEL[state].toLowerCase()}</span>
+                </li>
+              ))}
+          </ul>
+
           {/* Таблица уезжает в собственную прокрутку на узком экране,
               чтобы страница целиком не ехала вбок. */}
           <div className="table-scroll">
@@ -93,7 +125,8 @@ export default async function Status() {
           </div>
 
           <p className="small muted">
-            Обновлено {formatTime(doc.generated_at)} по московскому времени.
+            Обновлено <span className="mono">{formatTime(doc.generated_at)}</span>{" "}
+            по московскому времени. Проверка идёт каждые пять минут.
           </p>
         </>
       )}
@@ -110,9 +143,19 @@ export default async function Status() {
       <h2>Если узел перестал работать</h2>
 
       <p>
-        Мы напишем об этом в канале в тот же час: что именно легло, с какого
-        времени и когда рассчитываем починить. Ключи переезжают на рабочий
-        узел автоматически, переустанавливать ничего не нужно.
+        Мы напишем об этом{" "}
+        <a href={SERVICE.channel} target="_blank" rel="noopener noreferrer">
+          в канале
+        </a>{" "}
+        в тот же час: что именно легло, с какого времени и когда рассчитываем
+        починить. Ключи переезжают на рабочий узел автоматически,
+        переустанавливать ничего не нужно.
+      </p>
+
+      <p className="small muted">
+        Подписаться стоит даже если сейчас всё работает: когда узел ляжет,
+        канал — единственное место, где вы узнаете об этом от нас, а не из
+        собственных попыток открыть сайт.
       </p>
     </>
   );

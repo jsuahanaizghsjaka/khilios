@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SERVICE } from "@/lib/config";
+import { ThemeToggle } from "./theme-toggle";
 
 const LINKS = [
   { href: "/tariffs", label: "Тарифы" },
@@ -28,6 +30,16 @@ export function Nav() {
           </Link>
         );
       })}
+
+      {/* Канал внешней ссылкой, поэтому обычный <a>, а не Link: next/link
+          здесь ничего не ускоряет, а увести за пределы сайта должен честно. */}
+      {SERVICE.channel && (
+        <a href={SERVICE.channel} target="_blank" rel="noopener noreferrer">
+          Канал
+        </a>
+      )}
+
+      <ThemeToggle />
     </nav>
   );
 }
