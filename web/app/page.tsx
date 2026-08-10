@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { SERVICE, PLANS, REFUND_DAYS_RULE } from "@/lib/config";
-import { devices } from "@/lib/plural";
+import { SERVICE, PLANS, REFUND_DAYS_RULE, checkoutLink } from "@/lib/config";
 import { SphereHero } from "./sphere-hero";
+import { PlanCards } from "./plans";
 import {
   IconActivity,
   IconMegaphone,
@@ -148,12 +148,14 @@ function CtaRow({
   secondaryHref: string;
   secondaryLabel: string;
 }) {
-  const live = Boolean(SERVICE.bot);
+  const live = Boolean(checkoutLink());
 
   return (
     <div className="btn-row">
       {live ? (
-        <Link className="btn" href={SERVICE.bot}>
+        // Сразу с пробным тарифом в ссылке — кнопка обещает семь дней,
+        // значит и открыться должен именно он, а не общее меню.
+        <Link className="btn" href={checkoutLink("trial")}>
           Попробовать 7 дней бесплатно
         </Link>
       ) : (
@@ -260,28 +262,7 @@ export default function Home() {
             </p>
           </div>
 
-          <ul className="plans">
-            {PLANS.map((plan) => (
-              <li
-                key={plan.id}
-                className={plan.featured ? "plan plan--featured" : "plan"}
-              >
-                {plan.featured && <span className="tag">Обычно берут этот</span>}
-                <h3>{plan.name}</h3>
-                <div className="price">
-                  {/* 1 990 ₽ читается быстрее, чем 1990 ₽ */}
-                  {plan.price === 0
-                    ? "Бесплатно"
-                    : `${plan.price.toLocaleString("ru-RU")} ₽`}
-                  <span className="period">{plan.period}</span>
-                </div>
-                <p className="devices">
-                  {plan.devices} {devices(plan.devices)}
-                </p>
-                {plan.note && <p className="note">{plan.note}</p>}
-              </li>
-            ))}
-          </ul>
+          <PlanCards />
 
           <ul className="checks">
             {INCLUDED.map((item) => (

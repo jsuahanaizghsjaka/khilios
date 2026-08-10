@@ -737,6 +737,20 @@ p {
   color: var(--fg-dim);
 }
 
+/* Подвал карточки. margin-top: auto прижимает его к низу, поэтому кнопки
+   всех тарифов в ряду стоят на одной линии независимо от того, сколько
+   строк занял текст выше. */
+.plan-foot {
+  margin-top: auto;
+  padding-top: var(--space-6);
+}
+
+.plan-foot .btn {
+  width: 100%;
+  min-height: 44px;
+  font-size: 14px;
+}
+
 .tag {
   position: absolute;
   top: -11px;
