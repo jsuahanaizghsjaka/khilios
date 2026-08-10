@@ -38,6 +38,17 @@ jobs:
         working-directory: bot
         run: python -m pytest -q
 
+      # Уязвимости приходят не с нашим кодом, а с обновлением транзитивной
+      # зависимости. Так уже было: aiogram допускал весь диапазон aiohttp<3.15,
+      # и подтягивался 3.10.11 с длинным списком CVE.
+      - name: Уязвимости в зависимостях
+        working-directory: bot
+        run: pip-audit -r requirements.txt
+
+      - name: Статический анализ безопасности
+        working-directory: bot
+        run: bandit -q -r app
+
       # Синтаксис скриптов разворачивания. Ошибка в них обнаруживается
       # на чистой VPS в момент, когда что-то уже лежит.
       - name: Проверить bash-скрипты

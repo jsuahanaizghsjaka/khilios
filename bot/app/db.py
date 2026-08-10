@@ -129,7 +129,11 @@ class Db:
         )
         await self.conn.commit()
         user = await self.get(telegram_id)
-        assert user is not None
+        if user is None:
+            # Недостижимо после успешного INSERT OR IGNORE, но не assert:
+            # под `python -O` он вырезается, и вместо внятной ошибки здесь
+            # хендлер уронит AttributeError на None где-то через два вызова.
+            raise RuntimeError(f"Пользователь {telegram_id} не создался")
         return user
 
     async def get(self, telegram_id: int) -> User | None:
@@ -141,13 +145,40 @@ class Db:
             row = await cur.fetchone()
         return User(**dict(row)) if row else None
 
+    # Имена колонок нельзя передать параметром, поэтому они подставляются
+    # в текст запроса — и единственное, что отделяет это от SQL-инъекции,
+    # белый список. Сегодня во все вызовы `_update` имена приходят литералами
+    # из кода, но стоит один раз написать `_update(tid, **данные_из_апдейта)` —
+    # и без списка это станет дырой, которую никто не заметит на ревью.
+    _UPDATABLE = frozenset(
+        {
+            "state",
+            "consent_at",
+            "trial_issued_at",
+            "panel_uuid",
+            "sub_url",
+            "expires_at",
+            "devices",
+            "updated_at",
+        }
+    )
+
     async def _update(self, telegram_id: int, **fields) -> None:
         if not fields:
             return
+
+        unknown = set(fields) - self._UPDATABLE
+        if unknown:
+            raise ValueError(f"Недопустимые поля для UPDATE: {sorted(unknown)}")
+
         fields["updated_at"] = now()
         assignments = ", ".join(f"{k} = ?" for k in fields)
         await self.conn.execute(
-            f"UPDATE users SET {assignments} WHERE telegram_id = ?",
+            # Подавление разобрано, а не поставлено «чтобы не мешало»: имена
+            # колонок прошли белый список выше, значения идут параметрами.
+            # Снять его нельзя — замечание вернётся, а список останется
+            # единственной настоящей защитой.
+            f"UPDATE users SET {assignments} WHERE telegram_id = ?",  # nosec B608  # noqa: S608
             (*fields.values(), telegram_id),
         )
         await self.conn.commit()
