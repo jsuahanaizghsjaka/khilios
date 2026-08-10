@@ -35,6 +35,7 @@ infra/
     backup.sh          Бэкап панели и базы бота раз в 6 часов + выгрузка наружу
     status-json.sh     Проверка нод раз в 5 минут, отдаёт status.json для сайта
     panel.env.example  Параметры, копируется в panel.env
+    routing/           Сплит-роутинг: российские сервисы мимо туннеля
   node/
     deploy-node.sh     Разворачивание ноды Remnawave с нуля (основной скрипт)
     deploy-mtproto.sh  MTProto-прокси (mtg) с Fake TLS

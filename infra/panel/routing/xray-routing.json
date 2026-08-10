@@ -1,0 +1,103 @@
+{
+  "_comment": "Собрано build-routing.py из direct-domains.txt. Руками не править.",
+  "dns": {
+    "servers": [
+      {
+        "address": "localhost",
+        "domains": [
+          "geosite:category-ru",
+          "domain:ru",
+          "domain:su",
+          "domain:xn--p1ai",
+          "domain:vk.com",
+          "domain:vk.company",
+          "domain:yandex.com",
+          "domain:yandex.net",
+          "domain:yandex.st",
+          "domain:sberbank.com",
+          "domain:gazprombank.com",
+          "domain:2gis.com",
+          "domain:kaspersky.com",
+          "domain:kaspersky-labs.com",
+          "domain:steampowered.com",
+          "domain:steamcommunity.com",
+          "domain:steamstatic.com",
+          "domain:steamcontent.com",
+          "domain:valvesoftware.com",
+          "domain:apple.com",
+          "domain:icloud.com",
+          "domain:mzstatic.com",
+          "domain:cdn-apple.com",
+          "domain:apple-cloudkit.com",
+          "domain:play.google.com",
+          "domain:android.com",
+          "domain:dl.google.com",
+          "domain:gvt1.com",
+          "domain:gvt2.com"
+        ],
+        "skipFallback": true
+      },
+      "https://1.1.1.1/dns-query"
+    ],
+    "queryStrategy": "UseIP"
+  },
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "ip": [
+          "geoip:private"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "domain": [
+          "geosite:category-ru",
+          "domain:ru",
+          "domain:su",
+          "domain:xn--p1ai",
+          "domain:vk.com",
+          "domain:vk.company",
+          "domain:yandex.com",
+          "domain:yandex.net",
+          "domain:yandex.st",
+          "domain:sberbank.com",
+          "domain:gazprombank.com",
+          "domain:2gis.com",
+          "domain:kaspersky.com",
+          "domain:kaspersky-labs.com",
+          "domain:steampowered.com",
+          "domain:steamcommunity.com",
+          "domain:steamstatic.com",
+          "domain:steamcontent.com",
+          "domain:valvesoftware.com",
+          "domain:apple.com",
+          "domain:icloud.com",
+          "domain:mzstatic.com",
+          "domain:cdn-apple.com",
+          "domain:apple-cloudkit.com",
+          "domain:play.google.com",
+          "domain:android.com",
+          "domain:dl.google.com",
+          "domain:gvt1.com",
+          "domain:gvt2.com"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "ip": [
+          "geoip:ru"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "proxy",
+        "network": "tcp,udp"
+      }
+    ]
+  }
+}

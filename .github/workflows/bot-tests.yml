@@ -11,11 +11,13 @@ on:
     paths:
       - "bot/**"
       - "web/lib/config.ts"
+      - "infra/**"
       - ".github/workflows/bot-tests.yml"
   pull_request:
     paths:
       - "bot/**"
       - "web/lib/config.ts"
+      - "infra/**"
       - ".github/workflows/bot-tests.yml"
 
 jobs:
@@ -56,3 +58,9 @@ jobs:
           for f in infra/*/*.sh; do
             bash -n "$f" || exit 1
           done
+
+      # Ловит ровно один случай: поправили список доменов, забыли пересобрать
+      # правила. Обнаруживается иначе словами «у меня банк работает, а у него
+      # нет» — то есть худшим из возможных способов.
+      - name: Правила роутинга пересобраны
+        run: python3 infra/panel/routing/build-routing.py --check
