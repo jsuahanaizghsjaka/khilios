@@ -67,3 +67,63 @@ export function IconCard({ className }: Props) {
     </svg>
   );
 }
+
+export function IconBolt({ className }: Props) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M13 2 4 14h7l-1 8 9-12h-7z" />
+    </svg>
+  );
+}
+
+export function IconGauge({ className }: Props) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M12 14 16 9" />
+      <path d="M3.5 18a9 9 0 1 1 17 0" />
+      <circle cx="12" cy="14" r="1.4" />
+    </svg>
+  );
+}
+
+export function IconSupport({ className }: Props) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
+      <rect x="2.5" y="13.5" width="4" height="6" rx="1.6" />
+      <rect x="17.5" y="13.5" width="4" height="6" rx="1.6" />
+      <path d="M19.5 19.5a3 3 0 0 1-3 3H13" />
+    </svg>
+  );
+}
+
+export function IconUsers({ className }: Props) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3 20a6 6 0 0 1 12 0" />
+      <path d="M16.5 5.5a3.2 3.2 0 0 1 0 6" />
+      <path d="M18 14.6A6 6 0 0 1 21 20" />
+    </svg>
+  );
+}
+
+export function IconApps({ className }: Props) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="3" y="3" width="7" height="7" rx="2" />
+      <rect x="14" y="3" width="7" height="7" rx="2" />
+      <rect x="3" y="14" width="7" height="7" rx="2" />
+      <rect x="14" y="14" width="7" height="7" rx="2" />
+    </svg>
+  );
+}
+
+// Галочка для списков в карточках. Тоже декоративная: смысл несёт текст.
+export function IconCheck({ className }: Props) {
+  return (
+    <svg {...base} className={className}>
+      <path d="m4 12.5 5 5L20 6.5" />
+    </svg>
+  );
+}

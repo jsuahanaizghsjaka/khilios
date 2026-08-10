@@ -29,6 +29,29 @@ export const STATE_LABEL: Record<NodeState, string> = {
   down: "Не работает",
 };
 
+// Панель — отдельная система, и её ответ проверяем как любой внешний вход.
+// Ответ с кодом 200, но с обрезанным или неожиданным JSON (например, файл
+// перечитали в момент записи cron-ом), не должен ронять страницу целиком:
+// по замыслу она показывает «данных нет», а не пятисотку.
+function isStatusDoc(v: unknown): v is StatusDoc {
+  if (typeof v !== "object" || v === null) return false;
+  const doc = v as Record<string, unknown>;
+  if (typeof doc.generated_at !== "string") return false;
+  if (!Array.isArray(doc.nodes)) return false;
+  return doc.nodes.every((n) => {
+    if (typeof n !== "object" || n === null) return false;
+    const node = n as Record<string, unknown>;
+    return (
+      typeof node.name === "string" &&
+      typeof node.region === "string" &&
+      typeof node.checked_at === "string" &&
+      (node.state === "up" ||
+        node.state === "degraded" ||
+        node.state === "down")
+    );
+  });
+}
+
 // Считаем данные протухшими, если панель не обновляла их дольше 15 минут.
 // Молчащая страница статуса хуже отсутствующей: она врёт уверенным голосом.
 const STALE_AFTER_MS = 15 * 60 * 1000;
@@ -59,7 +82,8 @@ export async function getStatus(): Promise<StatusDoc | null> {
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;
-    return (await res.json()) as StatusDoc;
+    const data: unknown = await res.json();
+    return isStatusDoc(data) ? data : null;
   } catch {
     // Панель недоступна. Это само по себе новость, но врать «всё хорошо»
     // мы не будем — страница покажет, что данных нет.

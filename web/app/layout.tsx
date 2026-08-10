@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
 import { SERVICE } from "@/lib/config";
@@ -25,6 +25,14 @@ export const metadata: Metadata = {
   // Поисковики сюда не нужны: продвижение таких сервисов в РФ запрещено
   // с марта 2024, и SEO в плане нет намеренно. Люди приходят из бота и канала.
   robots: { index: false, follow: false },
+};
+
+// Браузерный хром на телефоне красим в цвет фона страницы: иначе над сайтом
+// висит чужая полоса и это читается как брак вёрстки. Значение обязано
+// совпадать с --bg в globals.css — разница даже в пару тонов заметна на стыке.
+export const viewport: Viewport = {
+  themeColor: "#0b0c0f",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({
