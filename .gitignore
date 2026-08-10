@@ -22,6 +22,7 @@ backups/
 node_modules/
 .next/
 .vercel
+*.tsbuildinfo
 
 # Python (бот)
 __pycache__/

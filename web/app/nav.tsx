@@ -7,7 +7,7 @@ import { ThemeToggle } from "./theme-toggle";
 
 const LINKS = [
   { href: "/tariffs", label: "Тарифы" },
-  { href: "/install", label: "Установка" },
+  { href: "/install", label: "Как подключить" },
   { href: "/status", label: "Статус" },
 ];
 
