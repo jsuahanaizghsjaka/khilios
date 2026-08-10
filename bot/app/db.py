@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS payments (
     created_at   TEXT NOT NULL
 );
 
+-- Счета на оплату криптовалютой. Живут отдельно от payments, потому что это
+-- разные факты: здесь счёт выставлен, там деньги получены. Запись переезжает
+-- в payments только после подтверждения от API — см. crypto.py.
+CREATE TABLE IF NOT EXISTS crypto_invoices (
+    invoice_id  TEXT PRIMARY KEY,
+    telegram_id INTEGER NOT NULL,
+    plan_id     TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    settled_at  TEXT
+);
+
 -- Напоминания об истечении. Ключ включает expires_at, поэтому новый оплаченный
 -- период получает свой комплект напоминаний, а старые записи ему не мешают.
 CREATE TABLE IF NOT EXISTS reminders (
@@ -235,6 +246,51 @@ class Db:
             "SELECT 1 FROM payments WHERE charge_id = ? LIMIT 1", (charge_id,)
         ) as cur:
             return await cur.fetchone() is not None
+
+    # ------------------------------------------------------------------
+    # Счета на криптооплату
+    # ------------------------------------------------------------------
+
+    async def add_crypto_invoice(
+        self, invoice_id: str, telegram_id: int, plan_id: str
+    ) -> None:
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO crypto_invoices "
+            "(invoice_id, telegram_id, plan_id, created_at) VALUES (?, ?, ?, ?)",
+            (invoice_id, telegram_id, plan_id, now()),
+        )
+        await self.conn.commit()
+
+    async def pending_crypto_invoices(self) -> list[tuple[str, int, str]]:
+        """Счета, по которым ещё не подтверждена оплата.
+
+        Отдаём все неоплаченные, а не только свежие: счёт с истёкшим сроком
+        API просто не вернёт как оплаченный, а вот преждевременно забыть
+        про счёт, по которому деньги пришли, — это потерянный платёж.
+        """
+        async with self.conn.execute(
+            "SELECT invoice_id, telegram_id, plan_id FROM crypto_invoices "
+            "WHERE settled_at IS NULL ORDER BY created_at"
+        ) as cur:
+            return [
+                (r["invoice_id"], r["telegram_id"], r["plan_id"])
+                for r in await cur.fetchall()
+            ]
+
+    async def settle_crypto_invoice(self, invoice_id: str) -> bool:
+        """Отметить счёт оплаченным. False — если уже был отмечен.
+
+        Возврат False и есть защита от повторной выдачи: опрос идёт по
+        расписанию, и один и тот же оплаченный счёт попадёт в выборку
+        дважды, если между тиками что-то пошло не так.
+        """
+        cur = await self.conn.execute(
+            "UPDATE crypto_invoices SET settled_at = ? "
+            "WHERE invoice_id = ? AND settled_at IS NULL",
+            (now(), invoice_id),
+        )
+        await self.conn.commit()
+        return cur.rowcount > 0
 
     # ------------------------------------------------------------------
     # Напоминания

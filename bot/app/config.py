@@ -22,6 +22,13 @@ def _opt(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
+def _flag(name: str) -> bool:
+    # Пустое значение — выключено. Явное "false"/"0"/"no" тоже: иначе
+    # STARS_ENABLED="false" в env читалось бы как включено, и это ровно та
+    # ошибка, которую никто не замечает, пока не увидит лишнюю кнопку.
+    return _opt(name).lower() in {"1", "true", "yes", "on"}
+
+
 def _int_opt(name: str) -> int | None:
     raw = _opt(name)
     if not raw:
@@ -42,9 +49,19 @@ class Config:
 
     channel: str  # @username канала для гейта
 
-    # Оплата появляется после модерации платёжки. До тех пор бот работает
-    # и выдаёт триалы — это осознанно, см. bot.env.example.
+    # Оплата картой и через СБП: токен провайдера (ЮKassa) из @BotFather.
+    # Появляется после модерации. До тех пор бот работает и выдаёт триалы —
+    # это осознанно, см. bot.env.example.
     payment_token: str
+
+    # Telegram Stars. Токен не нужен вообще: Stars — внутренняя валюта
+    # Telegram, счёт выставляется с пустым provider_token. Поэтому способ
+    # включается флагом, а не наличием ключа.
+    stars_enabled: bool
+
+    # Крипта через @CryptoBot. Пустой токен = способ выключен.
+    crypto_token: str
+    crypto_testnet: bool
 
     support_url: str
     offer_url: str
@@ -62,8 +79,21 @@ class Config:
     db_path: str
 
     @property
-    def payments_enabled(self) -> bool:
+    def card_enabled(self) -> bool:
         return bool(self.payment_token)
+
+    @property
+    def crypto_enabled(self) -> bool:
+        return bool(self.crypto_token)
+
+    @property
+    def payments_enabled(self) -> bool:
+        """Хоть один способ оплаты доступен.
+
+        Кнопки тарифов показываются по этому признаку: тариф, который не
+        купить ни одним способом, — это кнопка, ведущая в тупик.
+        """
+        return self.card_enabled or self.stars_enabled or self.crypto_enabled
 
     @property
     def antifraud_age_enabled(self) -> bool:
@@ -78,6 +108,9 @@ def load() -> Config:
         panel_api_token=_req("PANEL_API_TOKEN"),
         channel=_req("CHANNEL_USERNAME"),
         payment_token=_opt("PAYMENT_TOKEN"),
+        stars_enabled=_flag("STARS_ENABLED"),
+        crypto_token=_opt("CRYPTO_PAY_TOKEN"),
+        crypto_testnet=_flag("CRYPTO_TESTNET"),
         support_url=_opt("SUPPORT_URL"),
         offer_url=_opt("OFFER_URL", "https://khilios.net/legal/offer"),
         privacy_url=_opt("PRIVACY_URL", "https://khilios.net/legal/privacy"),

@@ -18,6 +18,7 @@ from aiogram.enums import ParseMode
 
 from . import config as config_module
 from . import handlers, scheduler
+from .crypto import CryptoClient
 from .db import Db
 from .panel import PanelClient
 
@@ -54,8 +55,23 @@ async def main() -> None:
             "TRIAL_MAX_TELEGRAM_ID не задан — отсечка по возрасту аккаунта ВЫКЛЮЧЕНА. "
             "Триал можно выносить новыми аккаунтами. Как откалибровать — bot/README.md"
         )
+    crypto: CryptoClient | None = None
+    if config.crypto_enabled:
+        crypto = CryptoClient(config.crypto_token, testnet=config.crypto_testnet)
+        if not await crypto.ping():
+            log.error("CRYPTO_PAY_TOKEN не принят. Счета выставляться не будут.")
+        if config.crypto_testnet:
+            log.warning("Крипта в РЕЖИМЕ ТЕСТОВОЙ СЕТИ — настоящие деньги не придут.")
+
     if not config.payments_enabled:
-        log.warning("PAYMENT_TOKEN пуст — оплата выключена, бот выдаёт только триалы.")
+        log.warning("Оплата выключена целиком — бот выдаёт только триалы.")
+    else:
+        log.info(
+            "Способы оплаты: карта/СБП %s, Stars %s, крипта %s",
+            "да" if config.card_enabled else "нет",
+            "да" if config.stars_enabled else "нет",
+            "да" if config.crypto_enabled else "нет",
+        )
 
     bot = Bot(
         token=config.bot_token,
@@ -65,16 +81,18 @@ async def main() -> None:
     # Зависимости раздаются диспетчером: хендлер объявляет их в сигнатуре
     # и получает готовыми. Глобальных синглтонов нет намеренно — их нельзя
     # подменить в тесте.
-    dp = Dispatcher(db=db, config=config, panel=panel)
+    dp = Dispatcher(db=db, config=config, panel=panel, crypto=crypto)
     dp.include_router(handlers.router())
 
-    background = asyncio.create_task(scheduler.run(bot, db, panel))
+    background = asyncio.create_task(scheduler.run(bot, db, panel, config, crypto))
 
     try:
         log.info("Бот запущен, канал гейта: %s", config.channel)
         await dp.start_polling(bot)
     finally:
         background.cancel()
+        if crypto is not None:
+            await crypto.close()
         await panel.close()
         await db.close()
         await bot.session.close()

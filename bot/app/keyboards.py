@@ -19,7 +19,8 @@ CB_TARIFFS = "tariffs"
 CB_SUB = "sub"
 CB_INSTALL = "install"
 CB_SUPPORT = "support"
-CB_BUY = "buy:"  # + plan_id
+CB_BUY = "buy:"  # + plan_id — открывает выбор способа оплаты
+CB_PAY = "pay:"  # + plan_id + ":" + method (card / stars / crypto)
 
 HAPP_URL = "https://happ.su/main/ru"
 
@@ -63,6 +64,37 @@ def tariffs(*, payments_enabled: bool) -> InlineKeyboardMarkup:
                 callback_data=f"{CB_BUY}{plan.id}",
             )
     kb.button(text="Назад", callback_data=CB_MENU)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def pay_methods(
+    plan_id: str, *, card: bool, stars: bool, crypto: bool, stars_price: int
+) -> InlineKeyboardMarkup:
+    """Способы оплаты для выбранного тарифа.
+
+    Показываются только доступные: кнопка способа, который не подключён, —
+    это тупик, в который человек упирается уже с намерением заплатить.
+    """
+    kb = InlineKeyboardBuilder()
+    if card:
+        kb.button(text="Картой МИР или СБП", callback_data=f"{CB_PAY}{plan_id}:card")
+    if stars:
+        kb.button(
+            text=f"Telegram Stars — {stars_price} ★",
+            callback_data=f"{CB_PAY}{plan_id}:stars",
+        )
+    if crypto:
+        kb.button(text="Криптовалютой", callback_data=f"{CB_PAY}{plan_id}:crypto")
+    kb.button(text="Назад к тарифам", callback_data=CB_TARIFFS)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def crypto_invoice(url: str) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Оплатить", url=url)
+    kb.button(text="В меню", callback_data=CB_MENU)
     kb.adjust(1)
     return kb.as_markup()
 

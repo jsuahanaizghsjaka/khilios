@@ -41,10 +41,23 @@ async def health(message: Message, config: Config, panel) -> None:
         return
 
     alive = await panel.ping()
+    yes = lambda ok: "да" if ok else "нет"  # noqa: E731
+
     lines = [
         f"Панель: {'отвечает' if alive else 'НЕ ОТВЕЧАЕТ'}",
-        f"Оплата: {'включена' if config.payments_enabled else 'выключена (нет токена)'}",
+        "",
+        "Способы оплаты:",
+        f"  карта и СБП: {yes(config.card_enabled)}",
+        f"  Telegram Stars: {yes(config.stars_enabled)}",
+        f"  криптовалюта: {yes(config.crypto_enabled)}"
+        + (" (ТЕСТОВАЯ СЕТЬ)" if config.crypto_testnet else ""),
+        "",
         f"Отсечка по возрасту: "
         f"{'включена' if config.antifraud_age_enabled else 'ВЫКЛЮЧЕНА (порог не задан)'}",
     ]
+
+    if not config.payments_enabled:
+        lines.append("")
+        lines.append("Оплата выключена целиком — бот выдаёт только триалы.")
+
     await message.answer("\n".join(lines))

@@ -15,18 +15,49 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 
 from . import fmt, keyboards as kb, texts
+from .config import Config
+from .crypto import CryptoClient, CryptoError, CryptoUnavailable
 from .db import Db
 from .panel import PanelClient, PanelError, PanelUnavailable
+from .plans import BY_ID
 
 log = logging.getLogger(__name__)
 
-# Раз в час достаточно: напоминания привязаны к дням, а не к минутам.
-TICK_SECONDS = 3600
+# Напоминания привязаны к дням, поэтому раз в час достаточно.
+HOURLY_SECONDS = 3600
 
-REMINDERS = (("d3", 3), ("d1", 1), ("d0", 0))
+# А вот криптосчёт опрашивается часто и намеренно: человек заплатил и ждёт
+# ключ. Час ожидания после оплаты — это возврат и плохой отзыв, даже если
+# формально всё работает.
+CRYPTO_SECONDS = 20
 
 
-async def run(bot: Bot, db: Db, panel: PanelClient) -> None:
+async def run(
+    bot: Bot,
+    db: Db,
+    panel: PanelClient,
+    config: Config,
+    crypto: CryptoClient | None,
+) -> None:
+    """Два независимых цикла с разной частотой.
+
+    Разделены намеренно: общий тик пришлось бы делать по частоте самого
+    срочного дела, и тогда напоминания об истечении пересчитывались бы
+    каждые двадцать секунд впустую.
+    """
+    tasks = [asyncio.create_task(_loop_hourly(bot, db, panel))]
+    if crypto is not None:
+        tasks.append(asyncio.create_task(_loop_crypto(bot, db, panel, config, crypto)))
+
+    try:
+        await asyncio.gather(*tasks)
+    except asyncio.CancelledError:
+        for t in tasks:
+            t.cancel()
+        raise
+
+
+async def _loop_hourly(bot: Bot, db: Db, panel: PanelClient) -> None:
     while True:
         try:
             await _tick(bot, db, panel)
@@ -36,7 +67,67 @@ async def run(bot: Bot, db: Db, panel: PanelClient) -> None:
             # Упавший цикл не должен уносить бота: без напоминаний он
             # работает, без хендлеров — нет.
             log.exception("Ошибка в фоновом цикле")
-        await asyncio.sleep(TICK_SECONDS)
+        await asyncio.sleep(HOURLY_SECONDS)
+
+
+async def _loop_crypto(
+    bot: Bot,
+    db: Db,
+    panel: PanelClient,
+    config: Config,
+    crypto: CryptoClient,
+) -> None:
+    # Импорт внутри функции, чтобы не тянуть весь пакет хендлеров при
+    # импорте планировщика: цикла зависимостей нет, но и лишней связи между
+    # фоновым циклом и роутерами тоже быть не должно.
+    from .handlers.billing import grant
+
+    while True:
+        try:
+            pending = await db.pending_crypto_invoices()
+            if pending:
+                by_id = {inv: (tg, plan_id) for inv, tg, plan_id in pending}
+                paid = await crypto.paid_invoice_ids(list(by_id))
+
+                for invoice_id in paid:
+                    telegram_id, plan_id = by_id[invoice_id]
+                    plan = BY_ID.get(plan_id)
+                    if plan is None:
+                        log.error("Счёт %s на неизвестный тариф %r", invoice_id, plan_id)
+                        continue
+
+                    # Отмечаем оплаченным ДО выдачи: если выдача упадёт,
+                    # деньги всё равно записаны и админ получит пинг.
+                    # Повторная выдача при этом невозможна — settle вернёт
+                    # False на втором проходе.
+                    if not await db.settle_crypto_invoice(invoice_id):
+                        continue
+
+                    await grant(
+                        bot=bot,
+                        db=db,
+                        config=config,
+                        panel=panel,
+                        telegram_id=telegram_id,
+                        plan=plan,
+                        charge_id=f"crypto:{invoice_id}",
+                        method="crypto",
+                        # telegram_id привязан значением по умолчанию, а не
+                        # захвачен из цикла: сейчас grant вызывается сразу и
+                        # разницы нет, но стоит вынести вызов из итерации —
+                        # и все ключи уедут последнему в пачке.
+                        reply=lambda text, _tid=telegram_id, **kw: bot.send_message(
+                            _tid, text, **kw
+                        ),
+                    )
+        except asyncio.CancelledError:
+            raise
+        except (CryptoError, CryptoUnavailable) as exc:
+            log.warning("Опрос криптосчетов не удался: %s", exc)
+        except Exception:  # noqa: BLE001
+            log.exception("Ошибка в цикле криптооплат")
+
+        await asyncio.sleep(CRYPTO_SECONDS)
 
 
 async def _tick(bot: Bot, db: Db, panel: PanelClient) -> None:
