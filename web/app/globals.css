@@ -734,3 +734,14 @@ p {
     scroll-behavior: auto !important;
   }
 }
+
+/* Гифки на странице установки. Показываются в размер телефона, а не во всю
+   ширину: скриншот экрана, растянутый на десктопе, читается хуже мелкого. */
+.step-gif {
+  display: block;
+  margin: 12px 0 4px;
+  max-width: min(100%, 280px);
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
