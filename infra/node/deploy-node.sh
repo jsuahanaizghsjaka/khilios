@@ -110,7 +110,21 @@ X11Forwarding no
 ClientAliveInterval 60
 EOF
 
-  systemctl restart ssh 2>/dev/null || systemctl restart sshd
+  # Ubuntu 23.04+ слушает ssh через systemd-сокет: тогда порт задаёт сокет,
+  # а Port из sshd_config игнорируется. Правим сокет, иначе новый порт не
+  # откроется, а старый закроет файрвол — и нода останется без входа.
+  if systemctl is-active --quiet ssh.socket; then
+    install -d /etc/systemd/system/ssh.socket.d
+    cat > /etc/systemd/system/ssh.socket.d/99-khilios.conf <<EOF
+[Socket]
+ListenStream=
+ListenStream=$SSH_PORT
+EOF
+    systemctl daemon-reload
+    systemctl restart ssh.socket
+  else
+    systemctl restart ssh 2>/dev/null || systemctl restart sshd
+  fi
   warn "НЕ ЗАКРЫВАЙ текущую сессию, пока не проверишь вход в новом окне: ssh -p $SSH_PORT root@<ip>"
 fi
 
@@ -144,6 +158,16 @@ else
   log "Docker уже стоит, пропускаю"
 fi
 systemctl enable --now docker >/dev/null
+
+# Предустановленный образом Docker может быть БЕЗ плагина compose — тогда
+# `docker compose up` не поднимет ноду. get.docker.com плагин приносит,
+# предустановленный — нет. Проверяем по факту.
+if ! docker compose version >/dev/null 2>&1; then
+  log "Ставлю плагин docker compose"
+  apt-get install -y -qq docker-compose-v2 2>/dev/null \
+    || apt-get install -y -qq docker-compose-plugin \
+    || die "Не удалось поставить плагин docker compose. Поставь вручную и перезапусти."
+fi
 
 # Логи контейнеров без ротации съедают диск за пару недель.
 cat > /etc/docker/daemon.json <<'EOF'

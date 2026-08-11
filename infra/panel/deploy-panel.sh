@@ -87,7 +87,24 @@ X11Forwarding no
 ClientAliveInterval 60
 EOF
 
-  systemctl restart ssh 2>/dev/null || systemctl restart sshd
+  # Ubuntu 23.04+ слушает ssh через systemd-сокет, и тогда порт задаёт сокет,
+  # а Port из sshd_config молча игнорируется — новый порт не открывается, а
+  # закрыть старый успевает файрвол ниже, и машина остаётся без входа. Поэтому
+  # при активном сокете правим сам сокет и НЕ трогаем ssh.service: настройки
+  # авторизации sshd читает при каждом входящем соединении, отдельный
+  # рестарт демона тут не нужен и только создаёт второго слушателя на порту.
+  if systemctl is-active --quiet ssh.socket; then
+    install -d /etc/systemd/system/ssh.socket.d
+    cat > /etc/systemd/system/ssh.socket.d/99-khilios.conf <<EOF
+[Socket]
+ListenStream=
+ListenStream=$SSH_PORT
+EOF
+    systemctl daemon-reload
+    systemctl restart ssh.socket
+  else
+    systemctl restart ssh 2>/dev/null || systemctl restart sshd
+  fi
   warn "НЕ ЗАКРЫВАЙ сессию, пока не проверишь: ssh -p $SSH_PORT root@<ip>"
 fi
 
@@ -120,6 +137,17 @@ else
   log "Docker уже стоит"
 fi
 systemctl enable --now docker >/dev/null
+
+# Docker может быть предустановлен образом БЕЗ плагина compose — тогда
+# `docker compose` не команда, а ошибка разбора флагов, и панель не
+# поднимается. Установка самого Docker через get.docker.com плагин приносит,
+# но предустановленный — нет. Проверяем по факту, а не по наличию docker.
+if ! docker compose version >/dev/null 2>&1; then
+  log "Ставлю плагин docker compose"
+  apt-get install -y -qq docker-compose-v2 2>/dev/null \
+    || apt-get install -y -qq docker-compose-plugin \
+    || die "Не удалось поставить плагин docker compose. Поставь вручную и перезапусти."
+fi
 
 cat > /etc/docker/daemon.json <<'EOF'
 {
