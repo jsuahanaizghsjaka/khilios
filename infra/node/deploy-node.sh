@@ -125,6 +125,16 @@ EOF
   else
     systemctl restart ssh 2>/dev/null || systemctl restart sshd
   fi
+
+  # Проверяем факт, а не намерение: если новый порт не слушается, закрывать
+  # старый нельзя. На панели этот случай однажды стоил доступа к машине.
+  sleep 1
+  if ss -tln 2>/dev/null | grep -qE "[:.]${SSH_PORT}([[:space:]]|$)"; then
+    log "SSH слушает $SSH_PORT"
+  else
+    warn "SSH НЕ слушает $SSH_PORT — порт 22 останется открытым."
+  fi
+
   warn "НЕ ЗАКРЫВАЙ текущую сессию, пока не проверишь вход в новом окне: ssh -p $SSH_PORT root@<ip>"
 fi
 
@@ -139,6 +149,13 @@ ufw --force reset >/dev/null
 ufw default deny incoming >/dev/null
 ufw default allow outgoing >/dev/null
 ufw allow "$SSH_PORT"/tcp comment 'ssh' >/dev/null
+
+# Порт 22 остаётся открытым намеренно — страховка на случай, если SSH не
+# переехал на новый порт. Закрывается вручную после проверки входа:
+#   ufw delete allow 22/tcp
+# Нода без входа — это не «неудобно», это переустановка с нуля.
+ufw allow 22/tcp comment 'ssh-fallback: закрыть после проверки' >/dev/null
+
 ufw allow 443/tcp comment 'vless-reality' >/dev/null
 ufw allow 443/udp comment 'vless-reality-udp' >/dev/null
 ufw allow from "$PANEL_IP" to any port "$APP_PORT" proto tcp comment 'remnanode <- panel' >/dev/null
