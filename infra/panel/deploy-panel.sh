@@ -191,13 +191,42 @@ if [[ ! -f .env ]]; then
   sed -i "s|^JWT_API_TOKENS_SECRET=.*|JWT_API_TOKENS_SECRET=$(gen)|" .env 2>/dev/null || true
   sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$DB_PASS|" .env 2>/dev/null || true
 
-  chmod 600 .env
+  # Пароль базы живёт в двух местах: POSTGRES_PASSWORD и строка подключения
+  # DATABASE_URL. Заменить только первое — панель поднимется и не сможет
+  # подключиться к собственной базе, а выглядеть это будет как «панель
+  # стартует и падает» без внятной причины. Собираем URL заново из частей.
+  PG_USER="$(grep -oP '^POSTGRES_USER=\K.*' .env 2>/dev/null | tr -d '"' || true)"
+  PG_DB="$(grep -oP '^POSTGRES_DB=\K.*' .env 2>/dev/null | tr -d '"' || true)"
+  PG_HOST="$(grep -oP '^DATABASE_URL=.*@\K[^:/]+' .env 2>/dev/null || true)"
+  PG_PORT="$(grep -oP '^DATABASE_URL=.*@[^:/]+:\K[0-9]+' .env 2>/dev/null || true)"
 
-  warn "Проверь .env вручную перед первым запуском:"
-  warn "  - все ли секреты заменены (не осталось 'change_me' и подобного)"
-  warn "  - совпадают ли имена переменных с версией образа, которую ставишь"
-  warn "  - SUB_PUBLIC_DOMAIN должен указывать на $SUB_HOST"
-  grep -nEi 'change|secret|password|domain' .env | head -20 || true
+  if [[ -n "$PG_USER" && -n "$PG_DB" && -n "$PG_HOST" ]]; then
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=\"postgresql://$PG_USER:$DB_PASS@$PG_HOST:${PG_PORT:-5432}/$PG_DB\"|" .env
+  else
+    warn "Не разобрал DATABASE_URL — впиши в него пароль из POSTGRES_PASSWORD вручную."
+  fi
+
+  # Домены. Без этого в шаблоне остаётся panel.domain.com, и каждая выданная
+  # ссылка на подписку указывает на чужой несуществующий домен — у всех
+  # пользователей сразу и молча.
+  sed -i "s|^PANEL_DOMAIN=.*|PANEL_DOMAIN=$ADMIN_HOST|" .env 2>/dev/null || true
+  sed -i "s|^SUB_PUBLIC_DOMAIN=.*|SUB_PUBLIC_DOMAIN=$SUB_HOST$SUB_PATH|" .env 2>/dev/null || true
+
+  chmod 600 .env
+fi
+
+# Проверка идёт при КАЖДОМ запуске, а не только при создании .env: файл могли
+# править руками между прогонами. Пускать панель с дефолтным секретом или
+# чужим доменом нельзя — оба отказа тихие и оба стоят всей базы.
+if grep -qiE '^[A-Z_]+=("?)(change_me|changeme)' .env; then
+  warn "В .env остались незаполненные значения:"
+  grep -niE '^[A-Z_]+=("?)(change_me|changeme)' .env
+  warn "Часть из них не нужна (например токен бота панели — у нас свой бот)."
+  warn "Но JWT-секреты и пароль базы обязаны быть заполнены."
+fi
+
+if grep -qE '^(PANEL_DOMAIN|SUB_PUBLIC_DOMAIN)=.*domain\.com' .env; then
+  die "В .env остались домены из примера (domain.com). Впиши $ADMIN_HOST и $SUB_HOST$SUB_PATH и запусти снова."
 fi
 
 log "Запуск панели"
