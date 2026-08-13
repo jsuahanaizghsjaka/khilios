@@ -1,0 +1,66 @@
+# Тесты бота.
+#
+# Запускаются в том числе на изменения web/lib/config.ts — там живут цены,
+# и tests/test_prices.py сверяет их с ботом. Разные цифры на сайте и в боте
+# обнаруживаются иначе только при споре с клиентом.
+
+name: bot
+
+on:
+  push:
+    paths:
+      - "bot/**"
+      - "web/lib/config.ts"
+      - "infra/**"
+      - ".github/workflows/bot-tests.yml"
+  pull_request:
+    paths:
+      - "bot/**"
+      - "web/lib/config.ts"
+      - "infra/**"
+      - ".github/workflows/bot-tests.yml"
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: bot/requirements-dev.txt
+
+      - name: Установить зависимости
+        working-directory: bot
+        run: pip install -r requirements-dev.txt
+
+      - name: Тесты
+        working-directory: bot
+        run: python -m pytest -q
+
+      # Уязвимости приходят не с нашим кодом, а с обновлением транзитивной
+      # зависимости. Так уже было: aiogram допускал весь диапазон aiohttp<3.15,
+      # и подтягивался 3.10.11 с длинным списком CVE.
+      - name: Уязвимости в зависимостях
+        working-directory: bot
+        run: pip-audit -r requirements.txt
+
+      - name: Статический анализ безопасности
+        working-directory: bot
+        run: bandit -q -r app
+
+      # Синтаксис скриптов разворачивания. Ошибка в них обнаруживается
+      # на чистой VPS в момент, когда что-то уже лежит.
+      - name: Проверить bash-скрипты
+        run: |
+          for f in infra/*/*.sh; do
+            bash -n "$f" || exit 1
+          done
+
+      # Ловит ровно один случай: поправили список доменов, забыли пересобрать
+      # правила. Обнаруживается иначе словами «у меня банк работает, а у него
+      # нет» — то есть худшим из возможных способов.
+      - name: Правила роутинга пересобраны
+        run: python3 infra/panel/routing/build-routing.py --check

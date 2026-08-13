@@ -87,8 +87,43 @@ X11Forwarding no
 ClientAliveInterval 60
 EOF
 
-  systemctl restart ssh 2>/dev/null || systemctl restart sshd
+  # Ubuntu 23.04+ слушает ssh через systemd-сокет, и тогда порт задаёт сокет,
+  # а Port из sshd_config молча игнорируется — новый порт не открывается, а
+  # закрыть старый успевает файрвол ниже, и машина остаётся без входа. Поэтому
+  # при активном сокете правим сам сокет и НЕ трогаем ssh.service: настройки
+  # авторизации sshd читает при каждом входящем соединении, отдельный
+  # рестарт демона тут не нужен и только создаёт второго слушателя на порту.
+  if systemctl is-active --quiet ssh.socket; then
+    install -d /etc/systemd/system/ssh.socket.d
+    cat > /etc/systemd/system/ssh.socket.d/99-khilios.conf <<EOF
+[Socket]
+ListenStream=
+ListenStream=$SSH_PORT
+EOF
+    systemctl daemon-reload
+    systemctl restart ssh.socket
+  else
+    systemctl restart ssh 2>/dev/null || systemctl restart sshd
+  fi
+
+  # Проверяем ФАКТ, а не намерение. Ровно здесь скрипт однажды запер машину:
+  # порт в конфиге поменялся, sshd остался на 22, а файрвол ниже открыл
+  # только новый порт — и внутрь стало не попасть вообще. Причина была в
+  # systemd-сокете, но причина неважна: если новый порт не слушается,
+  # закрывать старый нельзя ни при каких обстоятельствах.
+  sleep 1
+  if ss -tln 2>/dev/null | grep -qE "[:.]${SSH_PORT}([[:space:]]|$)"; then
+    SSH_MOVED=yes
+    log "SSH слушает $SSH_PORT"
+  else
+    SSH_MOVED=no
+    warn "SSH НЕ слушает $SSH_PORT — оставляю порт 22 открытым."
+    warn "Разберись с этим до того, как закрывать 22."
+  fi
+
   warn "НЕ ЗАКРЫВАЙ сессию, пока не проверишь: ssh -p $SSH_PORT root@<ip>"
+else
+  SSH_MOVED=no
 fi
 
 # --------------------------------------------------------------------------
@@ -102,6 +137,16 @@ ufw --force reset >/dev/null
 ufw default deny incoming >/dev/null
 ufw default allow outgoing >/dev/null
 ufw allow "$SSH_PORT"/tcp comment 'ssh' >/dev/null
+
+# Порт 22 остаётся открытым НАМЕРЕННО, даже когда SSH переехал.
+# Скрипт не имеет права оставить машину без входа: цена закрытого 22 при
+# неработающем новом порте — поездка в консоль хостера, а если консоль
+# недоступна, то и полная переустановка. Цена лишнего открытого порта —
+# фоновый брутфорс, который и так отбивает fail2ban и запрет входа по паролю.
+# Закрывается вручную, после того как вход по новому порту ПРОВЕРЕН — команда
+# печатается в конце скрипта.
+ufw allow 22/tcp comment 'ssh-fallback: закрыть после проверки нового порта' >/dev/null
+
 ufw allow 80/tcp comment 'acme' >/dev/null
 ufw allow 443/tcp comment 'caddy' >/dev/null
 ufw --force enable >/dev/null
@@ -120,6 +165,17 @@ else
   log "Docker уже стоит"
 fi
 systemctl enable --now docker >/dev/null
+
+# Docker может быть предустановлен образом БЕЗ плагина compose — тогда
+# `docker compose` не команда, а ошибка разбора флагов, и панель не
+# поднимается. Установка самого Docker через get.docker.com плагин приносит,
+# но предустановленный — нет. Проверяем по факту, а не по наличию docker.
+if ! docker compose version >/dev/null 2>&1; then
+  log "Ставлю плагин docker compose"
+  apt-get install -y -qq docker-compose-v2 2>/dev/null \
+    || apt-get install -y -qq docker-compose-plugin \
+    || die "Не удалось поставить плагин docker compose. Поставь вручную и перезапусти."
+fi
 
 cat > /etc/docker/daemon.json <<'EOF'
 {
@@ -163,13 +219,42 @@ if [[ ! -f .env ]]; then
   sed -i "s|^JWT_API_TOKENS_SECRET=.*|JWT_API_TOKENS_SECRET=$(gen)|" .env 2>/dev/null || true
   sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$DB_PASS|" .env 2>/dev/null || true
 
-  chmod 600 .env
+  # Пароль базы живёт в двух местах: POSTGRES_PASSWORD и строка подключения
+  # DATABASE_URL. Заменить только первое — панель поднимется и не сможет
+  # подключиться к собственной базе, а выглядеть это будет как «панель
+  # стартует и падает» без внятной причины. Собираем URL заново из частей.
+  PG_USER="$(grep -oP '^POSTGRES_USER=\K.*' .env 2>/dev/null | tr -d '"' || true)"
+  PG_DB="$(grep -oP '^POSTGRES_DB=\K.*' .env 2>/dev/null | tr -d '"' || true)"
+  PG_HOST="$(grep -oP '^DATABASE_URL=.*@\K[^:/]+' .env 2>/dev/null || true)"
+  PG_PORT="$(grep -oP '^DATABASE_URL=.*@[^:/]+:\K[0-9]+' .env 2>/dev/null || true)"
 
-  warn "Проверь .env вручную перед первым запуском:"
-  warn "  - все ли секреты заменены (не осталось 'change_me' и подобного)"
-  warn "  - совпадают ли имена переменных с версией образа, которую ставишь"
-  warn "  - SUB_PUBLIC_DOMAIN должен указывать на $SUB_HOST"
-  grep -nEi 'change|secret|password|domain' .env | head -20 || true
+  if [[ -n "$PG_USER" && -n "$PG_DB" && -n "$PG_HOST" ]]; then
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=\"postgresql://$PG_USER:$DB_PASS@$PG_HOST:${PG_PORT:-5432}/$PG_DB\"|" .env
+  else
+    warn "Не разобрал DATABASE_URL — впиши в него пароль из POSTGRES_PASSWORD вручную."
+  fi
+
+  # Домены. Без этого в шаблоне остаётся panel.domain.com, и каждая выданная
+  # ссылка на подписку указывает на чужой несуществующий домен — у всех
+  # пользователей сразу и молча.
+  sed -i "s|^PANEL_DOMAIN=.*|PANEL_DOMAIN=$ADMIN_HOST|" .env 2>/dev/null || true
+  sed -i "s|^SUB_PUBLIC_DOMAIN=.*|SUB_PUBLIC_DOMAIN=$SUB_HOST$SUB_PATH|" .env 2>/dev/null || true
+
+  chmod 600 .env
+fi
+
+# Проверка идёт при КАЖДОМ запуске, а не только при создании .env: файл могли
+# править руками между прогонами. Пускать панель с дефолтным секретом или
+# чужим доменом нельзя — оба отказа тихие и оба стоят всей базы.
+if grep -qiE '^[A-Z_]+=("?)(change_me|changeme)' .env; then
+  warn "В .env остались незаполненные значения:"
+  grep -niE '^[A-Z_]+=("?)(change_me|changeme)' .env
+  warn "Часть из них не нужна (например токен бота панели — у нас свой бот)."
+  warn "Но JWT-секреты и пароль базы обязаны быть заполнены."
+fi
+
+if grep -qE '^(PANEL_DOMAIN|SUB_PUBLIC_DOMAIN)=.*domain\.com' .env; then
+  die "В .env остались домены из примера (domain.com). Впиши $ADMIN_HOST и $SUB_HOST$SUB_PATH и запусти снова."
 fi
 
 log "Запуск панели"
@@ -206,6 +291,16 @@ $ADMIN_HOST {
 # Страница подписки. Открыта всем, но только по пути подписки:
 # на этом же имени не должно быть ничего лишнего.
 $SUB_HOST {
+	# status.json для публичной страницы статуса на сайте.
+	# Его генерирует status-json.sh раз в 5 минут, а сайт читает по STATUS_URL.
+	# Отдаётся статикой, мимо панели: страница статуса должна пережить
+	# ровно тот случай, ради которого её и заводят — когда панели плохо.
+	# Наружу уходят только имя узла, регион и состояние, адресов в файле нет.
+	handle /status/* {
+		root * /var/www
+		file_server
+	}
+
 	handle $SUB_PATH* {
 		reverse_proxy 127.0.0.1:3000
 	}
@@ -240,6 +335,10 @@ systemctl reload caddy 2>/dev/null || systemctl restart caddy
 log "Бэкапы и генератор статуса в cron"
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 install -d -m 755 /etc/khilios
+
+# Каталог создаём здесь, а не в status-json.sh: Caddy отдаёт его статикой,
+# и без каталога первый же запрос до первого крона получил бы 404.
+install -d -m 755 /var/www /var/www/status
 
 [[ -f /etc/khilios/nodes.conf ]] || cat > /etc/khilios/nodes.conf <<'EOF'
 # имя|регион|адрес|порт  — адреса наружу не уходят, см. status-json.sh
@@ -284,16 +383,31 @@ cat <<EOF
  IP:        $PUBLIC_IP
  Админка:   https://$ADMIN_HOST   (только с $ADMIN_IP)
  Подписка:  https://$SUB_HOST$SUB_PATH
+ Статус:    https://$SUB_HOST/status/status.json
+            это значение идёт в STATUS_URL на Vercel
  SSH:       ssh -p $SSH_PORT root@$PUBLIC_IP
+            порт 22 пока ОТКРЫТ — это страховка, см. пункт 0
 
  Дальше:
+   0. ПРОВЕРИТЬ новый порт из другого окна, не закрывая текущее:
+        ssh -p $SSH_PORT root@$PUBLIC_IP "echo ok"
+      Ответило — закрыть запасной вход:
+        ufw delete allow 22/tcp
+      Не ответило — НЕ закрывать 22 и разбираться: без него вход
+      останется только через консоль хостера, а она бывает недоступна
+      ровно тогда, когда нужна$([[ "${SSH_MOVED:-no}" == "no" ]] && echo "
+
+      ВНИМАНИЕ: при этом запуске SSH на $SSH_PORT НЕ поднялся.
+      Порт 22 сейчас единственный вход — не закрывай его.")
    1. A-записи $ADMIN_HOST и $SUB_HOST → $PUBLIC_IP.
       Для админки и подписки — DNS-only, без прокси Cloudflare:
       сертификат выпускает Caddy, второй TLS сверху всё сломает
    2. Открыть админку, создать администратора СРАЗУ.
       Панель со свободной регистрацией = чужая панель
    3. Nodes -> Create, скопировать SSL_CERT, дальше deploy-node.sh на ноде
-   4. Вписать ноды в /etc/khilios/nodes.conf для страницы статуса
+   4. Вписать ноды в /etc/khilios/nodes.conf, прогнать status-json.sh
+      руками и открыть https://$SUB_HOST/status/status.json в браузере.
+      Пустой ответ здесь = пустая страница статуса на сайте
    5. Заполнить REMOTE в backup.sh, иначе бэкап лежит рядом с панелью
       и не спасает ровно в том случае, ради которого делается
    6. Учения: восстановить панель из бэкапа на чистую VPS, засечь время

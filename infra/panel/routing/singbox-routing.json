@@ -1,0 +1,108 @@
+{
+  "_comment": "Собрано build-routing.py из direct-domains.txt. Руками не править.",
+  "route": {
+    "rules": [
+      {
+        "ip_is_private": true,
+        "outbound": "direct"
+      },
+      {
+        "domain_suffix": [
+          "ru",
+          "su",
+          "xn--p1ai",
+          "vk.com",
+          "vk.company",
+          "yandex.com",
+          "yandex.net",
+          "yandex.st",
+          "sberbank.com",
+          "gazprombank.com",
+          "2gis.com",
+          "kaspersky.com",
+          "kaspersky-labs.com",
+          "steampowered.com",
+          "steamcommunity.com",
+          "steamstatic.com",
+          "steamcontent.com",
+          "valvesoftware.com",
+          "apple.com",
+          "icloud.com",
+          "mzstatic.com",
+          "cdn-apple.com",
+          "apple-cloudkit.com",
+          "play.google.com",
+          "android.com",
+          "dl.google.com",
+          "gvt1.com",
+          "gvt2.com"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "geosite-ru",
+          "geoip-ru"
+        ],
+        "outbound": "direct"
+      }
+    ],
+    "final": "proxy"
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "local",
+        "address": "local",
+        "detour": "direct"
+      },
+      {
+        "tag": "remote",
+        "address": "https://1.1.1.1/dns-query",
+        "detour": "proxy"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          "ru",
+          "su",
+          "xn--p1ai",
+          "vk.com",
+          "vk.company",
+          "yandex.com",
+          "yandex.net",
+          "yandex.st",
+          "sberbank.com",
+          "gazprombank.com",
+          "2gis.com",
+          "kaspersky.com",
+          "kaspersky-labs.com",
+          "steampowered.com",
+          "steamcommunity.com",
+          "steamstatic.com",
+          "steamcontent.com",
+          "valvesoftware.com",
+          "apple.com",
+          "icloud.com",
+          "mzstatic.com",
+          "cdn-apple.com",
+          "apple-cloudkit.com",
+          "play.google.com",
+          "android.com",
+          "dl.google.com",
+          "gvt1.com",
+          "gvt2.com"
+        ],
+        "server": "local"
+      },
+      {
+        "rule_set": [
+          "geosite-ru"
+        ],
+        "server": "local"
+      }
+    ],
+    "final": "remote"
+  }
+}

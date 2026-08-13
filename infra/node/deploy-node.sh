@@ -110,7 +110,31 @@ X11Forwarding no
 ClientAliveInterval 60
 EOF
 
-  systemctl restart ssh 2>/dev/null || systemctl restart sshd
+  # Ubuntu 23.04+ слушает ssh через systemd-сокет: тогда порт задаёт сокет,
+  # а Port из sshd_config игнорируется. Правим сокет, иначе новый порт не
+  # откроется, а старый закроет файрвол — и нода останется без входа.
+  if systemctl is-active --quiet ssh.socket; then
+    install -d /etc/systemd/system/ssh.socket.d
+    cat > /etc/systemd/system/ssh.socket.d/99-khilios.conf <<EOF
+[Socket]
+ListenStream=
+ListenStream=$SSH_PORT
+EOF
+    systemctl daemon-reload
+    systemctl restart ssh.socket
+  else
+    systemctl restart ssh 2>/dev/null || systemctl restart sshd
+  fi
+
+  # Проверяем факт, а не намерение: если новый порт не слушается, закрывать
+  # старый нельзя. На панели этот случай однажды стоил доступа к машине.
+  sleep 1
+  if ss -tln 2>/dev/null | grep -qE "[:.]${SSH_PORT}([[:space:]]|$)"; then
+    log "SSH слушает $SSH_PORT"
+  else
+    warn "SSH НЕ слушает $SSH_PORT — порт 22 останется открытым."
+  fi
+
   warn "НЕ ЗАКРЫВАЙ текущую сессию, пока не проверишь вход в новом окне: ssh -p $SSH_PORT root@<ip>"
 fi
 
@@ -125,6 +149,13 @@ ufw --force reset >/dev/null
 ufw default deny incoming >/dev/null
 ufw default allow outgoing >/dev/null
 ufw allow "$SSH_PORT"/tcp comment 'ssh' >/dev/null
+
+# Порт 22 остаётся открытым намеренно — страховка на случай, если SSH не
+# переехал на новый порт. Закрывается вручную после проверки входа:
+#   ufw delete allow 22/tcp
+# Нода без входа — это не «неудобно», это переустановка с нуля.
+ufw allow 22/tcp comment 'ssh-fallback: закрыть после проверки' >/dev/null
+
 ufw allow 443/tcp comment 'vless-reality' >/dev/null
 ufw allow 443/udp comment 'vless-reality-udp' >/dev/null
 ufw allow from "$PANEL_IP" to any port "$APP_PORT" proto tcp comment 'remnanode <- panel' >/dev/null
@@ -144,6 +175,16 @@ else
   log "Docker уже стоит, пропускаю"
 fi
 systemctl enable --now docker >/dev/null
+
+# Предустановленный образом Docker может быть БЕЗ плагина compose — тогда
+# `docker compose up` не поднимет ноду. get.docker.com плагин приносит,
+# предустановленный — нет. Проверяем по факту.
+if ! docker compose version >/dev/null 2>&1; then
+  log "Ставлю плагин docker compose"
+  apt-get install -y -qq docker-compose-v2 2>/dev/null \
+    || apt-get install -y -qq docker-compose-plugin \
+    || die "Не удалось поставить плагин docker compose. Поставь вручную и перезапусти."
+fi
 
 # Логи контейнеров без ротации съедают диск за пару недель.
 cat > /etc/docker/daemon.json <<'EOF'

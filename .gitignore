@@ -22,3 +22,13 @@ backups/
 node_modules/
 .next/
 .vercel
+*.tsbuildinfo
+
+# Python (бот)
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
