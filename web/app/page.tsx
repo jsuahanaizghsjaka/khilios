@@ -1,181 +1,186 @@
+import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
-import { SERVICE, PLANS } from "@/lib/config";
-import {
-  IconActivity,
-  IconMegaphone,
-  IconRefund,
-  IconRoute,
-  IconCard,
-} from "./icons";
+import { PLANS, SERVICE } from "@/lib/config";
+import { BotLink, LandingInteractive } from "./landing-interactive";
 
-// Тексты намеренно без превосходных степеней и без обещаний, которых не
-// выполнить. Продаём не технологию, а «не надо разбираться»: главный
-// конкурент — бесплатная Amnezia, которую поставит любой, кто готов читать
-// инструкцию. Всё преимущество в том, что читать не придётся.
+export const metadata: Metadata = {
+  title: "Защищённое соединение без настройки",
+  description:
+    "Один бот, одна кнопка, ключ пришёл. Семь дней бесплатно, без карты и автосписаний.",
+};
 
-const FEATURES = [
+const FACTS = [
   {
-    icon: IconActivity,
-    title: "Статус узлов открыт.",
-    body: (
-      <>
-        Видно, что работает прямо сейчас, и когда проверяли в последний раз.{" "}
-        <Link href="/status">Посмотреть</Link>.
-      </>
-    ),
+    title: "Статус узлов открыт",
+    text: "Показываем состояние и время последней проверки. Если данные устарели, прямо об этом говорим.",
   },
   {
-    icon: IconMegaphone,
-    title: "О сбоях пишем сами.",
-    body: (
-      <>
-        Не «ведутся работы», а что именно легло, с какого времени и когда
-        починим — {""}
-        <a href={SERVICE.channel} target="_blank" rel="noopener noreferrer">
-          в канале
-        </a>
-        .
-      </>
-    ),
+    title: "О сбоях пишем сами",
+    text: "Не прячемся за «техническими работами»: сообщаем, что случилось и когда рассчитываем исправить.",
   },
   {
-    icon: IconRefund,
-    title: "Деньги возвращаем без разговоров.",
-    body: (
-      <>
-        Пропорционально неиспользованным дням, по первому запросу.{" "}
-        <Link href="/legal/refund">Условия</Link>.
-      </>
-    ),
+    title: "Возврат без уговоров",
+    text: "Возвращаем стоимость неиспользованных дней по первому запросу. Причину спрашивать не будем.",
   },
   {
-    icon: IconRoute,
-    title: "Банки и Госуслуги работают как обычно.",
-    body: (
-      <>
-        Российские сервисы идут напрямую, мимо VPN — ничего не ломается и не
-        просит подтверждений.
-      </>
-    ),
+    title: "Банки и Госуслуги — напрямую",
+    text: "Российские сервисы обходят туннель по готовым правилам маршрутизации и работают с вашим обычным адресом.",
   },
   {
-    icon: IconCard,
-    title: "Платить можно как удобно.",
-    body: (
-      <>
-        Картой МИР, через СБП, Telegram Stars или криптовалютой.{" "}
-        <Link href="/tariffs">Подробнее</Link>.
-      </>
-    ),
+    title: "Без лимита трафика",
+    text: "Не режем скорость после определённого объёма. Фактическая скорость зависит от сети, устройства и выбранного узла.",
+  },
+  {
+    title: "Несколько способов подключения",
+    text: "Предлагаем совместимые приложения и ручную настройку. Доступность конкретного приложения в магазине не гарантируем.",
   },
 ];
 
+const STEPS = [
+  ["1", "Открыть бота", "Вход через Telegram — без анкет и подтверждения почты."],
+  ["2", "Забрать ключ", "Семь дней бесплатно. Карта для пробного периода не нужна."],
+  ["3", "Поставить приложение", "Бот даст ссылку и добавит настройки в совместимый клиент."],
+  ["4", "Включить", "На телефоне и компьютере — одной кнопкой. Совместимый роутер можно настроить вручную."],
+];
+
 export default function Home() {
-  const standard = PLANS.find((p) => p.id === "standard")!;
-
   return (
-    <>
-      <div className="hero">
-        <p className="eyebrow">VLESS + Reality · собственные узлы</p>
-
-      {/* Заголовок сменён после сверки с правовым заключением. Предыдущий —
-          «работает, когда не работает ничего» — не содержал запрещённых слов,
-          но по смыслу читался как обещание обхода ограничений. Продающая сила
-          у него была выше, а отстройка проекта всё равно не в заголовке,
-          а в публичном статусе, возвратах и в том, что мы не исчезаем. */}
-      <h1>Защищённое соединение, которое не надо настраивать</h1>
-
-      <p className="lead">
-        Один бот, одна кнопка, ключ пришёл. Разбираться в протоколах и конфигах
-        не нужно — это наша работа, а не ваша.
-      </p>
-
-      {/* Одна главная кнопка на экран. Две равнозначные превращают
-          решение «купить» в решение «выбрать», а это другая задача. */}
-      <div className="btn-row">
-        {SERVICE.bot ? (
-          <Link className="btn" href={SERVICE.bot}>
-            Попробовать 7 дней бесплатно
-          </Link>
-        ) : (
-          <span className="btn" aria-disabled="true">
-            Скоро открытие
-          </span>
-        )}
+    <div className="landing">
+      <div className="landing-bg" aria-hidden="true" />
+      <div className="landing-orb" aria-hidden="true">
+        <Image
+          src="/sphere.gif"
+          alt=""
+          width={500}
+          height={500}
+          priority
+          unoptimized
+        />
       </div>
 
-      <p className="small muted">
-        Карту на пробный период не спрашиваем. Автосписания нет — ни на пробном,
-        ни после него.
-      </p>
-      </div>
+      <section className="landing-hero" aria-labelledby="hero-title">
+        <div className="landing-container landing-hero-inner">
+          <p className="landing-overline">Khilios — защищённое соединение</p>
+          <h1 id="hero-title">Защищённое соединение, которое не надо настраивать</h1>
+          <p className="landing-lead">
+            Один бот, одна кнопка, ключ пришёл. Разбираться в протоколах и
+            конфигах не нужно — это наша работа, а не ваша.
+          </p>
+          <div className="landing-actions">
+            <BotLink botUrl={SERVICE.bot} className="pill pill-primary" start="site_start">
+              Попробовать 7 дней бесплатно
+            </BotLink>
+            <a href="#tariffs" className="pill pill-outline">Тарифы</a>
+          </div>
+          <p className="landing-note">
+            Карту на пробный период не спрашиваем. Автосписания нет — ни на
+            пробном, ни после него.
+          </p>
+        </div>
+      </section>
 
-      <h2>Чем отличаемся</h2>
-
-      <ul className="features">
-        {FEATURES.map(({ icon: Icon, title, body }) => (
-          <li key={title}>
-            <Icon />
-            <span>
-              <strong>{title}</strong> {body}
+      <div className="landing-ticker" aria-label="Основные условия">
+        <div className="landing-ticker-track">
+          {["7 дней бесплатно", "Без автосписаний", "Карта МИР, СБП, Stars и криптовалюта", "Банки и Госуслуги — напрямую", "Статус узлов открыт", "Возврат по первому запросу"].concat(
+            ["7 дней бесплатно", "Без автосписаний", "Карта МИР, СБП, Stars и криптовалюта", "Банки и Госуслуги — напрямую", "Статус узлов открыт", "Возврат по первому запросу"],
+          ).map((item, index) => (
+            <span className="landing-ticker-item" key={`${item}-${index}`}>
+              <span className="landing-dot" aria-hidden="true" />{item}
             </span>
-          </li>
-        ))}
-      </ul>
+          ))}
+        </div>
+      </div>
 
-      <h2>Сколько стоит</h2>
+      <section id="status" className="landing-section landing-anchor" aria-labelledby="status-title">
+        <div className="landing-container">
+          <p className="landing-section-overline">— честно</p>
+          <h2 id="status-title" className="landing-section-title">Что это значит на практике</h2>
+          <div className="facts-grid">
+            {FACTS.map((fact) => (
+              <article className="landing-card" key={fact.title}>
+                <h3>{fact.title}</h3>
+                <p>{fact.text}</p>
+              </article>
+            ))}
+          </div>
+          <div className="status-promo">
+            <div>
+              <strong>Живые данные находятся на отдельной странице.</strong>
+              <p>Она получает `status.json` от панели и обновляется раз в минуту.</p>
+            </div>
+            <Link href="/status" className="pill pill-outline">Открыть статус узлов</Link>
+          </div>
+        </div>
+      </section>
 
-      <p>
-        {standard.price} ₽ в месяц за {standard.devices} устройств — этого
-        хватает на всю семью. Есть тариф дешевле и годовой,{" "}
-        <Link href="/tariffs">все варианты здесь</Link>.
-      </p>
+      <section id="setup" className="landing-section landing-anchor" aria-labelledby="setup-title">
+        <div className="landing-container">
+          <p className="landing-section-overline">— подключение</p>
+          <h2 id="setup-title" className="landing-section-title">Четыре коротких шага</h2>
+          <div className="steps-grid">
+            {STEPS.map(([number, title, text]) => (
+              <article className="landing-step" key={number}>
+                <span className="step-number">{number}</span>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
+          <LandingInteractive mode="nodes" />
+        </div>
+      </section>
 
-      <h2>Чего не обещаем</h2>
-
-      <p>
-        Что работать будет всегда и везде. Блокировки меняются каждую неделю, и
-        любой, кто обещает стопроцентную доступность, либо не понимает, как это
-        устроено, либо рассчитывает, что вы не проверите.
-      </p>
-
-      <p>
-        Обещаем другое: если что-то отвалилось, вы узнаете об этом от нас, а не
-        из собственных попыток открыть сайт. И сможете забрать деньги за
-        неиспользованные дни, не объясняя причин.
-      </p>
-
-      <p className="small muted">
-        Расписание поддержки внизу страницы — честное расписание одного
-        человека, а не колл-центра. Зато в эти часы отвечает тот, кто
-        действительно чинит.
-      </p>
-
-      {/* Канал в потоке страницы, а не поверх неё. Всплывающее окно
-          «подпишитесь» — ровно тот приём, из-за которого сервисам на этом
-          рынке и не верят. */}
-      {SERVICE.channel && (
-        <section className="callout">
-          <h2>Канал</h2>
-          <p>
-            Там мы пишем о сбоях в тот же час, когда они случились: что именно
-            легло, с какого времени и когда починим. Плюс разборы — что сегодня
-            отвалилось и почему, как настроить роутинг, что меняется в законах.
+      <section id="tariffs" className="landing-section landing-anchor" aria-labelledby="tariffs-title">
+        <div className="landing-container">
+          <p className="landing-section-overline">— тарифы</p>
+          <h2 id="tariffs-title" className="landing-section-title">Платите за дни, а не за обещания</h2>
+          <p className="landing-section-subtitle">
+            Разные тарифы — одинаковые узлы и правила возврата. Передумали —
+            вернём за оставшиеся дни.
           </p>
-          <p className="small muted">
-            Подписаться стоит до того, как что-то сломается. После — вы узнаете
-            новость не от нас, и это будет уже обычный сервис, каких много.
-          </p>
-          <a
-            className="btn btn--ghost"
-            href={SERVICE.channel}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Открыть канал
-          </a>
-        </section>
-      )}
-    </>
+          <LandingInteractive botUrl={SERVICE.bot} plans={PLANS} mode="plans" />
+        </div>
+      </section>
+
+      <section className="landing-section">
+        <div className="landing-container landing-narrow">
+          <p className="landing-section-overline">— честно</p>
+          <h2 className="landing-section-title">Чего мы не обещаем</h2>
+          <div className="honest-copy">
+            <p>
+              Что соединение будет работать всегда и везде. Сетевые условия
+              меняются, а стопроцентная доступность не зависит от одного сервиса.
+            </p>
+            <p>
+              Обещаем другое: не скрывать известные сбои, поддерживать запасные
+              узлы и вернуть деньги за неиспользованные дни.
+            </p>
+            <p className="muted">
+              Поддержка {SERVICE.supportHours}. {SERVICE.supportPromise}
+              Приоритетной очереди в тарифах нет — правила ответа одинаковы для всех.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-section landing-cta-section">
+        <div className="landing-container landing-narrow">
+          <div className="landing-cta">
+            <h2>Проще один раз проверить на своих устройствах</h2>
+            <p>
+              Семь дней бесплатно, без карты и автоматического продления. Если
+              подойдёт — выберите тариф в боте.
+            </p>
+            <div className="landing-actions">
+              <BotLink botUrl={SERVICE.bot} className="pill pill-primary" start="site_final">
+                Начать пробный период
+              </BotLink>
+              <Link href="/status" className="pill pill-outline">Статус узлов</Link>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }

@@ -1,26 +1,27 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import Link from "next/link";
 import { SERVICE } from "@/lib/config";
 import { Nav } from "./nav";
 import "./globals.css";
 
-// Шрифты скачиваются на сборке и раздаются с нашего домена.
-// Для сервиса, который продаёт приватность, тянуть шрифт с чужого CDN
-// на каждой загрузке — это отдавать своих пользователей мимо своей же
-// политики конфиденциальности.
-const inter = Inter({
-  subsets: ["latin", "cyrillic"],
+// Файлы лежат в репозитории: ни сборка, ни браузер пользователя не обращаются
+// к Google Fonts. Это важно и для приватности, и для доступности из сетей,
+// где внешний шрифтовой CDN может быть недоступен.
+const manrope = localFont({
+  src: "./fonts/Manrope-Variable.ttf",
   display: "swap",
   variable: "--font-sans",
+  weight: "200 800",
 });
 
 // Моноширинный — для данных: имена узлов, время проверки, цены.
 // Цифры в нём не «пляшут» между строками таблицы.
-const mono = JetBrains_Mono({
-  subsets: ["latin", "cyrillic"],
+const mono = localFont({
+  src: "./fonts/JetBrainsMono-Variable.ttf",
   display: "swap",
   variable: "--font-mono",
+  weight: "100 800",
 });
 
 export const metadata: Metadata = {
@@ -38,7 +39,7 @@ export const metadata: Metadata = {
 // Тема применяется до первой отрисовки, иначе страница моргает тёмным
 // у тех, кто выбрал светлую. Скрипт намеренно крошечный и синхронный:
 // всё, что он делает, — переносит сохранённый выбор на <html>.
-const themeScript = `try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`;
+const themeScript = `try{var t=localStorage.getItem('theme');document.documentElement.dataset.theme=t==='light'?'light':'dark'}catch(e){document.documentElement.dataset.theme='dark'}`;
 
 export default function RootLayout({
   children,
@@ -46,7 +47,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ru" className={`${inter.variable} ${mono.variable}`}>
+    <html lang="ru" className={`${manrope.variable} ${mono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
