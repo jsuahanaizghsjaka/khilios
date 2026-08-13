@@ -45,6 +45,7 @@ source ./bot.env
 : "${BOT_TOKEN:?BOT_TOKEN не задан — токен от @BotFather}"
 : "${PANEL_API_URL:?PANEL_API_URL не задан, обычно http://127.0.0.1:3000}"
 : "${PANEL_API_TOKEN:?PANEL_API_TOKEN не задан — создаётся в панели}"
+: "${PANEL_INTERNAL_SQUADS:?PANEL_INTERNAL_SQUADS не задан — UUID внутренних групп панели}"
 : "${ADMIN_TELEGRAM_ID:?ADMIN_TELEGRAM_ID не задан — ваш Telegram ID}"
 : "${CHANNEL_USERNAME:?CHANNEL_USERNAME не задан — канал для гейта, с @}"
 

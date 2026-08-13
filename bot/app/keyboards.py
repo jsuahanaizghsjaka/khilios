@@ -25,11 +25,14 @@ CB_PAY = "pay:"  # + plan_id + ":" + method (card / stars / crypto)
 HAPP_URL = "https://happ.su/main/ru"
 
 
-def consent(offer_url: str, privacy_url: str) -> InlineKeyboardMarkup:
+def consent(
+    offer_url: str, privacy_url: str, start_payload: str = ""
+) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="Оферта", url=offer_url)
     kb.button(text="Политика", url=privacy_url)
-    kb.button(text="Согласен, продолжить", callback_data=CB_CONSENT)
+    callback = f"{CB_CONSENT}:{start_payload}" if start_payload else CB_CONSENT
+    kb.button(text="Согласен, продолжить", callback_data=callback)
     kb.adjust(2, 1)
     return kb.as_markup()
 

@@ -31,6 +31,10 @@ HOURLY_SECONDS = 3600
 # формально всё работает.
 CRYPTO_SECONDS = 20
 
+# Порядок важен: сначала раннее предупреждение, затем более срочные. Каждый
+# вид фиксируется отдельно в reminders и для одного срока отправляется один раз.
+REMINDERS = (("d3", 3), ("d1", 1), ("d0", 0))
+
 
 async def run(
     bot: Bot,
@@ -96,13 +100,6 @@ async def _loop_crypto(
                         log.error("Счёт %s на неизвестный тариф %r", invoice_id, plan_id)
                         continue
 
-                    # Отмечаем оплаченным ДО выдачи: если выдача упадёт,
-                    # деньги всё равно записаны и админ получит пинг.
-                    # Повторная выдача при этом невозможна — settle вернёт
-                    # False на втором проходе.
-                    if not await db.settle_crypto_invoice(invoice_id):
-                        continue
-
                     await grant(
                         bot=bot,
                         db=db,
@@ -120,6 +117,11 @@ async def _loop_crypto(
                             _tid, text, **kw
                         ),
                     )
+                    # Сначала grant атомарно пишет charge_id в payments, затем
+                    # счёт уходит из очереди. Если процесс оборвётся между
+                    # шагами, повторный тик увидит charge_id и не выдаст срок
+                    # второй раз, но факт оплаты уже останется в базе.
+                    await db.settle_crypto_invoice(invoice_id)
         except asyncio.CancelledError:
             raise
         except (CryptoError, CryptoUnavailable) as exc:
