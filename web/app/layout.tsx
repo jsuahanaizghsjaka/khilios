@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import localFont from "next/font/local";
 import Link from "next/link";
 import { SERVICE } from "@/lib/config";
@@ -31,6 +32,10 @@ export const metadata: Metadata = {
   },
   description:
     "Защищённое соединение, которое не надо настраивать. Статус узлов открыт, о сбоях пишем сами, деньги возвращаем без разговоров.",
+  icons: {
+    icon: "/logo.jpg",
+    apple: "/logo.jpg",
+  },
   // Поисковики сюда не нужны: продвижение таких сервисов в РФ запрещено
   // с марта 2024, и SEO в плане нет намеренно. Люди приходят из бота и канала.
   robots: { index: false, follow: false },
@@ -55,7 +60,15 @@ export default function RootLayout({
         <header className="site-head">
           <div className="wrap">
             <Link href="/" className="brand">
-              {SERVICE.name}
+              <Image
+                src="/logo.jpg"
+                alt=""
+                width={38}
+                height={38}
+                className="brand-logo"
+                priority
+              />
+              <span>{SERVICE.name}</span>
             </Link>
             <Nav />
           </div>
