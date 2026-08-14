@@ -227,6 +227,24 @@ a:hover {
   color: var(--fg);
 }
 
+.site-head nav .nav-account {
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--line));
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  color: var(--fg);
+}
+
+.site-head nav .nav-account:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 11%, transparent);
+}
+
+.account-avatar {
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--line));
+}
+
 /* Текущий раздел должен быть виден: иначе непонятно, где ты находишься */
 .site-head nav a[aria-current="page"] {
   color: var(--fg);
@@ -733,6 +751,143 @@ p {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ---------- Авторизация и личный кабинет ---------- */
+
+.auth-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 30rem);
+  align-items: center;
+  gap: clamp(2rem, 7vw, 6rem);
+  min-height: 34rem;
+  padding-block: var(--space-8);
+}
+
+.auth-copy h1,
+.account-heading h1,
+.profile-page h1 {
+  margin: 0;
+  max-width: 18ch;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.auth-copy .lead,
+.account-heading .lead {
+  max-width: 38rem;
+  color: var(--fg-muted);
+}
+
+.auth-widget,
+.profile-widget {
+  display: flex;
+  min-width: 0;
+  justify-content: center;
+}
+
+.account-page,
+.profile-page {
+  padding-block: var(--space-4) var(--space-8);
+}
+
+.account-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.account-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 4px);
+  padding: clamp(1.25rem, 4vw, 2rem);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.account-card-accent {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--line));
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--primary) 17%, transparent), transparent 45%),
+    var(--surface);
+}
+
+.account-card-wide {
+  grid-column: 1 / -1;
+}
+
+.account-card-label {
+  margin: 0 0 var(--space-2);
+  color: var(--primary);
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.account-card h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 3vw, 1.7rem);
+  line-height: 1.25;
+}
+
+.account-card > p:not(.account-card-label) {
+  color: var(--fg-muted);
+}
+
+.account-card .btn,
+.account-link {
+  margin-top: auto;
+}
+
+.account-details {
+  width: 100%;
+  margin: var(--space-6) 0;
+}
+
+.account-details div {
+  display: grid;
+  grid-template-columns: minmax(5rem, 0.35fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) 0;
+}
+
+.account-details dt {
+  color: var(--fg-muted);
+}
+
+.account-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.account-link {
+  font-weight: 700;
+}
+
+.profile-page > div:first-child {
+  margin-bottom: var(--space-8);
+}
+
+.profile-widget {
+  justify-content: flex-start;
+  overflow-x: auto;
 }
 
 /* ---------- Новый лендинг ---------- */
@@ -1258,6 +1413,33 @@ p {
 }
 
 @media (max-width: 640px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding-block: var(--space-4);
+  }
+  .auth-widget {
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+  .account-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .account-heading .btn {
+    width: 100%;
+  }
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+  .account-card-wide {
+    grid-column: auto;
+  }
+  .account-details div {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
   .landing {
     margin-top: calc(-1 * var(--space-8));
   }
@@ -1296,6 +1478,9 @@ p {
   .site-head nav a:not(.nav-cta) {
     font-size: 0.78rem;
     white-space: nowrap;
+  }
+  .site-head nav .nav-account {
+    padding-inline: 0.7rem;
   }
   .site-head .nav-cta {
     min-height: 34px;

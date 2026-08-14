@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SERVICE } from "@/lib/config";
+import { AuthNav } from "./auth-nav";
 import { ThemeToggle } from "./theme-toggle";
 
 const LINKS = [
@@ -11,7 +12,7 @@ const LINKS = [
   { href: "/#status", label: "Статус" },
 ];
 
-export function Nav() {
+export function Nav({ authEnabled }: { authEnabled: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -37,6 +38,14 @@ export function Nav() {
         <a href={SERVICE.channel} target="_blank" rel="noopener noreferrer">
           Канал
         </a>
+      )}
+
+      {authEnabled ? (
+        <AuthNav />
+      ) : (
+        <Link href="/account" className="nav-account">
+          Кабинет
+        </Link>
       )}
 
       {SERVICE.bot ? (
