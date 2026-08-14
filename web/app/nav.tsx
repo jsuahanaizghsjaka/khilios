@@ -40,6 +40,8 @@ export function Nav({ authEnabled }: { authEnabled: boolean }) {
         </a>
       )}
 
+      <ThemeToggle />
+
       {authEnabled ? (
         <AuthNav />
       ) : (
@@ -56,7 +58,6 @@ export function Nav({ authEnabled }: { authEnabled: boolean }) {
         <span className="nav-cta is-disabled" aria-disabled="true">Скоро</span>
       )}
 
-      <ThemeToggle />
     </nav>
   );
 }
