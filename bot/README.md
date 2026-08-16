@@ -65,7 +65,7 @@ DB_PATH=./local.sqlite3 .venv/bin/python -m app.main
 
 ### 1. Проверить версию API панели
 
-`app/panel.py` и контрактные тесты соответствуют Remnawave 2.8: используется
+`app/panel.py` и контрактные тесты проверены на Remnawave 3.2.3: используется
 числовой `id` пользователя и action-маршруты `/api/users/{id}/actions/*`.
 После обновления Remnawave прогнать тесты и сверить OpenAPI установленной
 панели (`/backend-tools/swagger` или `/backend-tools/scalar`) **до** первого

@@ -43,7 +43,7 @@ die()  { printf '\n\033[1;31m[x] %s\033[0m\n' "$*" >&2; exit 1; }
 source ./bot.env
 
 : "${BOT_TOKEN:?BOT_TOKEN не задан — токен от @BotFather}"
-: "${PANEL_API_URL:?PANEL_API_URL не задан, обычно http://127.0.0.1:3000}"
+: "${PANEL_API_URL:?PANEL_API_URL не задан, обычно http://127.0.0.1:3002}"
 : "${PANEL_API_TOKEN:?PANEL_API_TOKEN не задан — создаётся в панели}"
 : "${PANEL_INTERNAL_SQUADS:?PANEL_INTERNAL_SQUADS не задан — UUID внутренних групп панели}"
 : "${ADMIN_TELEGRAM_ID:?ADMIN_TELEGRAM_ID не задан — ваш Telegram ID}"
@@ -58,7 +58,9 @@ chmod 600 bot.env
 
 # Панель должна быть жива: бот без неё поднимется, но ключей не выдаст,
 # и разбираться в этом потом дороже, чем узнать сейчас.
-if ! curl -fsS --max-time 5 -o /dev/null "$PANEL_API_URL" 2>/dev/null; then
+if ! curl -fsS --max-time 5 -o /dev/null \
+  -H "Authorization: Bearer $PANEL_API_TOKEN" \
+  "$PANEL_API_URL/api/users?size=1" 2>/dev/null; then
   warn "Панель не отвечает на $PANEL_API_URL."
   warn "Бот без неё не выдаст ни одного ключа. Проверь: docker compose ps в /opt/remnawave"
 fi

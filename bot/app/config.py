@@ -12,15 +12,29 @@ import uuid
 from dataclasses import dataclass
 
 
+def _env(name: str, default: str = "") -> str:
+    """Read both Compose-style and ``docker run --env-file`` values.
+
+    Docker Compose removes balanced quotes from env-file values, while
+    ``docker run --env-file`` passes them through literally.  Deployment and
+    one-off health checks use both paths, so accepting either representation
+    keeps UUIDs and URLs identical in both environments.
+    """
+    value = os.getenv(name, default).strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1].strip()
+    return value
+
+
 def _req(name: str) -> str:
-    value = os.getenv(name, "").strip()
+    value = _env(name)
     if not value:
         raise RuntimeError(f"{name} не задан в окружении. См. infra/bot/bot.env.example")
     return value
 
 
 def _opt(name: str, default: str = "") -> str:
-    return os.getenv(name, default).strip()
+    return _env(name, default)
 
 
 def _flag(name: str) -> bool:
@@ -146,7 +160,7 @@ def load() -> Config:
     return Config(
         bot_token=_req("BOT_TOKEN"),
         admin_id=int(_req("ADMIN_TELEGRAM_ID")),
-        panel_api_url=_opt("PANEL_API_URL", "http://127.0.0.1:3000").rstrip("/"),
+        panel_api_url=_opt("PANEL_API_URL", "http://127.0.0.1:3002").rstrip("/"),
         panel_api_token=_req("PANEL_API_TOKEN"),
         panel_internal_squads=_uuid_list_req("PANEL_INTERNAL_SQUADS"),
         channel=_req("CHANNEL_USERNAME"),
