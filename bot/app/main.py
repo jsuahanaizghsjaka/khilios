@@ -17,10 +17,11 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from . import config as config_module
-from . import handlers, scheduler
+from . import handlers, scheduler, webpay
 from .crypto import CryptoClient
 from .db import Db
 from .panel import PanelClient
+from .yookassa import YooKassaClient
 
 log = logging.getLogger("khilios")
 
@@ -63,12 +64,20 @@ async def main() -> None:
         if config.crypto_testnet:
             log.warning("Крипта в РЕЖИМЕ ТЕСТОВОЙ СЕТИ — настоящие деньги не придут.")
 
+    yookassa: YooKassaClient | None = None
+    if config.web_pay_enabled:
+        yookassa = YooKassaClient(config.yookassa_shop_id, config.yookassa_secret_key)
+        if not await yookassa.ping():
+            log.error("Ключи ЮKassa не приняты. Веб-чекаут работать не будет.")
+
     if not config.payments_enabled:
         log.warning("Оплата выключена целиком — бот выдаёт только триалы.")
     else:
         log.info(
-            "Способы оплаты: карта/СБП %s, Stars %s, крипта %s",
+            "Способы оплаты: карта/СБП в Telegram %s, веб-чекаут ЮKassa %s, "
+            "Stars %s, крипта %s",
             "да" if config.card_enabled else "нет",
+            "да" if config.web_pay_enabled else "нет",
             "да" if config.stars_enabled else "нет",
             "да" if config.crypto_enabled else "нет",
         )
@@ -81,16 +90,25 @@ async def main() -> None:
     # Зависимости раздаются диспетчером: хендлер объявляет их в сигнатуре
     # и получает готовыми. Глобальных синглтонов нет намеренно — их нельзя
     # подменить в тесте.
-    dp = Dispatcher(db=db, config=config, panel=panel, crypto=crypto)
+    dp = Dispatcher(db=db, config=config, panel=panel, crypto=crypto, yookassa=yookassa)
     dp.include_router(handlers.router())
 
     background = asyncio.create_task(scheduler.run(bot, db, panel, config, crypto))
+
+    webpay_runner = None
+    if yookassa is not None:
+        app = webpay.build_app(db=db, panel=panel, bot=bot, config=config, yookassa=yookassa)
+        webpay_runner = await webpay.run(config, app)
 
     try:
         log.info("Бот запущен, канал гейта: %s", config.channel)
         await dp.start_polling(bot)
     finally:
         background.cancel()
+        if webpay_runner is not None:
+            await webpay_runner.cleanup()
+        if yookassa is not None:
+            await yookassa.close()
         if crypto is not None:
             await crypto.close()
         await panel.close()

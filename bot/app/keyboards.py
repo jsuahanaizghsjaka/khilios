@@ -69,16 +69,29 @@ def tariffs(*, payments_enabled: bool) -> InlineKeyboardMarkup:
 
 
 def pay_methods(
-    plan_id: str, *, card: bool, stars: bool, crypto: bool, stars_price: int
+    plan_id: str,
+    *,
+    card: bool,
+    webpay: bool,
+    stars: bool,
+    crypto: bool,
+    stars_price: int,
 ) -> InlineKeyboardMarkup:
     """Способы оплаты для выбранного тарифа.
 
     Показываются только доступные: кнопка способа, который не подключён, —
     это тупик, в который человек упирается уже с намерением заплатить.
+
+    card и webpay — оба «карта или СБП», но разными путями (форма внутри
+    Telegram против страницы ЮKassa), и оба могут быть включены сразу.
+    Подписи различают их явно, иначе человек не поймёт разницу и напишет
+    в поддержку «а зачем тут два одинаковых пункта».
     """
     kb = InlineKeyboardBuilder()
     if card:
-        kb.button(text="Картой МИР или СБП", callback_data=f"{CB_PAY}{plan_id}:card")
+        kb.button(text="Картой или СБП — в Telegram", callback_data=f"{CB_PAY}{plan_id}:card")
+    if webpay:
+        kb.button(text="Картой или СБП — на сайте", callback_data=f"{CB_PAY}{plan_id}:webpay")
     if stars:
         kb.button(
             text=f"Telegram Stars — {stars_price} ★",

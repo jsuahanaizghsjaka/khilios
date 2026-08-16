@@ -1,0 +1,203 @@
+"""Веб-сервер оплаты: вебхук ЮKassa не должен верить своему телу.
+
+Это единственное место в проекте, где подтверждение платежа приходит
+снаружи по HTTP, а не запрашивается нами самими (Telegram Payments и
+крипта устроены иначе). Поэтому здесь особенно важно проверить именно
+негативный случай: поддельный вебхук с status=succeeded в теле не должен
+закрывать заказ, если реальный API говорит другое.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock
+
+import pytest
+
+from app import webpay
+from app.db import Db
+from app.yookassa import YooKassaError
+
+
+@pytest.fixture
+async def db(tmp_path):
+    store = Db(str(tmp_path / "webpay.sqlite3"))
+    await store.connect()
+    yield store
+    await store.close()
+
+
+class FakeBot:
+    def __init__(self) -> None:
+        self.sent: list[tuple[int, str]] = []
+
+    async def send_message(self, chat_id, text, **kw):
+        self.sent.append((chat_id, text))
+
+
+def _config():
+    from app.config import Config
+
+    return Config(
+        bot_token="x",
+        admin_id=999,
+        panel_api_url="http://127.0.0.1:3000",
+        panel_api_token="x",
+        channel="@ch",
+        payment_token="",
+        yookassa_shop_id="shop",
+        yookassa_secret_key="secret",
+        web_pay_host="sub.example.net",
+        web_pay_port=8081,
+        stars_enabled=False,
+        crypto_token="",
+        crypto_testnet=False,
+        support_url="",
+        offer_url="",
+        privacy_url="",
+        trial_max_telegram_id=None,
+        db_path=":memory:",
+    )
+
+
+async def _make_client(aiohttp_client, db, *, yk, panel, bot):
+    app = webpay.build_app(db=db, panel=panel, bot=bot, config=_config(), yookassa=yk)
+    return await aiohttp_client(app)
+
+
+async def test_webhook_ignores_forged_body_status(aiohttp_client, db):
+    """Тело вебхука утверждает succeeded. Реальный статус в API — pending.
+    Заказ не должен закрыться: это и есть смысл переспроса, см. yookassa.py."""
+    await db.get_or_create(1)
+    await db.create_web_order("order-1", 1, "standard", 299)
+    await db.attach_yk_payment("order-1", "yk-1")
+
+    yk = AsyncMock()
+    yk.get_payment_status.return_value = "pending"  # реальный статус
+    panel = AsyncMock()
+    bot = FakeBot()
+
+    client = await _make_client(aiohttp_client, db, yk=yk, panel=panel, bot=bot)
+    resp = await client.post(
+        "/pay/webhook/yookassa",
+        json={"event": "payment.succeeded", "object": {"id": "yk-1", "status": "succeeded"}},
+    )
+
+    assert resp.status == 200
+    yk.get_payment_status.assert_awaited_once_with("yk-1")
+
+    order = await db.get_web_order("order-1")
+    assert order["status"] == "pending"
+    assert bot.sent == []
+
+
+async def test_webhook_settles_order_when_api_confirms(aiohttp_client, db, monkeypatch):
+    await db.get_or_create(1)
+    await db.create_web_order("order-1", 1, "standard", 299)
+    await db.attach_yk_payment("order-1", "yk-1")
+
+    yk = AsyncMock()
+    yk.get_payment_status.return_value = "succeeded"
+
+    panel = AsyncMock()
+    panel.create_user.return_value = ("uuid-1", "https://sub.example/x", "2030-01-01T00:00:00+00:00")
+    bot = FakeBot()
+
+    client = await _make_client(aiohttp_client, db, yk=yk, panel=panel, bot=bot)
+    resp = await client.post(
+        "/pay/webhook/yookassa",
+        json={"event": "payment.succeeded", "object": {"id": "yk-1", "status": "succeeded"}},
+    )
+
+    assert resp.status == 200
+    order = await db.get_web_order("order-1")
+    assert order["status"] == "succeeded"
+    # grant() шлёт два сообщения: покупателю ключ, админу — пинг о продаже.
+    assert len(bot.sent) == 2
+    assert bot.sent[0][0] == 1  # ключ ушёл тому пользователю, что в заказе
+
+
+async def test_webhook_is_idempotent_on_repeated_delivery(aiohttp_client, db):
+    """ЮKassa может доставить уведомление повторно. Второй раз не должен
+    выдавать ключ снова."""
+    await db.get_or_create(1)
+    await db.create_web_order("order-1", 1, "standard", 299)
+    await db.attach_yk_payment("order-1", "yk-1")
+
+    yk = AsyncMock()
+    yk.get_payment_status.return_value = "succeeded"
+    panel = AsyncMock()
+    panel.create_user.return_value = ("uuid-1", "https://sub.example/x", "2030-01-01T00:00:00+00:00")
+    bot = FakeBot()
+
+    client = await _make_client(aiohttp_client, db, yk=yk, panel=panel, bot=bot)
+    body = {"event": "payment.succeeded", "object": {"id": "yk-1", "status": "succeeded"}}
+
+    await client.post("/pay/webhook/yookassa", json=body)
+    await client.post("/pay/webhook/yookassa", json=body)
+
+    assert panel.create_user.await_count == 1
+    # Ровно те же два сообщения, что и при однократной доставке — второй
+    # вызов вебхука не должен добавить к ним ещё.
+    assert len(bot.sent) == 2
+
+
+async def test_webhook_unknown_payment_id_alerts_admin_not_crashes(aiohttp_client, db):
+    """Платёж подтверждён API, но в базе нет заказа с таким yk_payment_id —
+    рассинхрон, а не повод падать. Админ получает пинг, сервис не падает."""
+    yk = AsyncMock()
+    yk.get_payment_status.return_value = "succeeded"
+    panel = AsyncMock()
+    bot = FakeBot()
+
+    client = await _make_client(aiohttp_client, db, yk=yk, panel=panel, bot=bot)
+    resp = await client.post(
+        "/pay/webhook/yookassa",
+        json={"event": "payment.succeeded", "object": {"id": "yk-unknown", "status": "succeeded"}},
+    )
+
+    assert resp.status == 200
+    assert any(chat_id == 999 for chat_id, _ in bot.sent)  # админу ушёл пинг
+
+
+async def test_webhook_malformed_body_returns_400(aiohttp_client, db):
+    yk = AsyncMock()
+    panel = AsyncMock()
+    bot = FakeBot()
+
+    client = await _make_client(aiohttp_client, db, yk=yk, panel=panel, bot=bot)
+    resp = await client.post(
+        "/pay/webhook/yookassa", data=b"not json", headers={"Content-Type": "application/json"}
+    )
+
+    assert resp.status == 400
+    yk.get_payment_status.assert_not_awaited()
+
+
+async def test_return_page_says_paid_when_order_settled(aiohttp_client, db):
+    await db.get_or_create(1)
+    await db.create_web_order("order-1", 1, "standard", 299)
+    await db.attach_yk_payment("order-1", "yk-1")
+    await db.settle_web_order("order-1", "yk-1")
+
+    yk = AsyncMock()
+    panel = AsyncMock()
+    bot = FakeBot()
+
+    client = await _make_client(aiohttp_client, db, yk=yk, panel=panel, bot=bot)
+    resp = await client.get("/pay/order-1/return")
+    text = await resp.text()
+
+    assert resp.status == 200
+    assert "Оплачено" in text
+
+
+async def test_return_page_handles_unknown_order(aiohttp_client, db):
+    yk = AsyncMock()
+    panel = AsyncMock()
+    bot = FakeBot()
+
+    client = await _make_client(aiohttp_client, db, yk=yk, panel=panel, bot=bot)
+    resp = await client.get("/pay/no-such-order/return")
+
+    assert resp.status == 200
+    assert "не найден" in (await resp.text())

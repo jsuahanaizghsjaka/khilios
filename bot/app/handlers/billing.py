@@ -1,15 +1,21 @@
 """Тарифы и оплата.
 
-Четыре рельса, три механики:
+Пять рельсов, четыре механики:
 
-- **карта МИР и СБП** — Telegram Payments с токеном провайдера (ЮKassa);
+- **карта МИР и СБП через Telegram** — Telegram Payments с токеном
+  провайдера (ЮKassa), форму рисует сам Telegram;
+- **карта МИР и СБП веб-чекаутом** — прямой вызов API ЮKassa, форму
+  рисует страница ЮKassa (redirect), подтверждение приходит вебхуком
+  на локальный сервер бота, см. webpay.py и yookassa.py;
 - **Telegram Stars** — тот же Telegram Payments, но валюта XTR и пустой
   токен провайдера: Stars внутренняя валюта, посредник не нужен;
-- **криптовалюта** — @CryptoBot, единственный способ, о котором Telegram
-  нам ничего не сообщит: оплата подтверждается опросом, см. crypto.py.
+- **криптовалюта** — @CryptoBot, оплата подтверждается опросом,
+  см. crypto.py.
 
-Первые два приходят готовым событием `successful_payment` и потому делят
-один обработчик. Третий подтверждается в scheduler.py.
+Первые два Telegram-способа приходят готовым событием `successful_payment`
+и потому делят один обработчик. Крипта подтверждается опросом в
+scheduler.py. Веб-чекаут подтверждается вебхуком в webpay.py и вызывает
+grant() напрямую оттуда — здесь для него только создание заказа и ссылки.
 
 Три правила, которые здесь нельзя нарушить.
 
@@ -44,6 +50,7 @@ from ..crypto import CryptoClient, CryptoError, CryptoUnavailable
 from ..db import Db
 from ..panel import PanelClient, PanelError, PanelUnavailable
 from ..plans import BY_ID, Plan
+from ..yookassa import YooKassaClient, YooKassaError, YooKassaUnavailable, new_order_id
 
 log = logging.getLogger(__name__)
 
@@ -84,6 +91,7 @@ async def pick_method(call: CallbackQuery, config: Config) -> None:
         reply_markup=kb.pay_methods(
             plan.id,
             card=config.card_enabled,
+            webpay=config.web_pay_enabled,
             # Stars предлагаем только если цена в них проставлена: тариф
             # с price_stars=0 отдался бы бесплатно.
             stars=config.stars_enabled and plan.price_stars > 0,
@@ -101,6 +109,7 @@ async def start_payment(
     db: Db,
     config: Config,
     crypto: CryptoClient | None,
+    yookassa: YooKassaClient | None,
 ) -> None:
     raw = call.data.removeprefix(kb.CB_PAY)
     plan_id, _, method = raw.rpartition(":")
@@ -113,6 +122,9 @@ async def start_payment(
     if method == "card" and config.card_enabled:
         await call.answer()
         await _send_card_invoice(bot, call.from_user.id, plan, config)
+
+    elif method == "webpay" and config.web_pay_enabled and yookassa is not None:
+        await _send_web_checkout(call, db, config, yookassa, plan)
 
     elif method == "stars" and config.stars_enabled and plan.price_stars > 0:
         await call.answer()
@@ -155,6 +167,40 @@ async def _send_stars_invoice(bot: Bot, chat_id: int, plan: Plan) -> None:
         provider_token="",  # nosec B106
         currency="XTR",
         prices=[LabeledPrice(label=plan.name, amount=plan.price_stars)],
+    )
+
+
+async def _send_web_checkout(
+    call: CallbackQuery, db: Db, config: Config, yookassa: YooKassaClient, plan: Plan
+) -> None:
+    """Заказ веб-чекаута. Создаём его в базе ДО обращения к ЮKassa: order_id
+    нужен как Idempotence-Key, а не наоборот — так повторный клик по кнопке
+    из-за медленной сети не создаст в ЮKassa два разных платежа."""
+    await call.answer()
+
+    order_id = new_order_id()
+    await db.create_web_order(order_id, call.from_user.id, plan.id, plan.price_rub)
+
+    return_url = f"https://{config.web_pay_host}/pay/{order_id}/return"
+
+    try:
+        yk_payment_id, pay_url = await yookassa.create_payment(
+            order_id=order_id,
+            amount_rub=plan.price_rub,
+            plan_name=plan.name,
+            return_url=return_url,
+        )
+    except (YooKassaError, YooKassaUnavailable) as exc:
+        log.error("Не создан веб-заказ для %s: %s", call.from_user.id, exc)
+        await db.cancel_web_order(order_id)
+        await call.message.edit_text(texts.WEBPAY_OFF, reply_markup=kb.back_to_menu())
+        return
+
+    await db.attach_yk_payment(order_id, yk_payment_id)
+
+    await call.message.edit_text(
+        texts.WEBPAY_INVOICE.format(price=plan.price_rub),
+        reply_markup=kb.crypto_invoice(pay_url),
     )
 
 

@@ -47,7 +47,8 @@ async def health(message: Message, config: Config, panel) -> None:
         f"Панель: {'отвечает' if alive else 'НЕ ОТВЕЧАЕТ'}",
         "",
         "Способы оплаты:",
-        f"  карта и СБП: {yes(config.card_enabled)}",
+        f"  карта и СБП в Telegram: {yes(config.card_enabled)}",
+        f"  карта и СБП на сайте (ЮKassa): {yes(config.web_pay_enabled)}",
         f"  Telegram Stars: {yes(config.stars_enabled)}",
         f"  криптовалюта: {yes(config.crypto_enabled)}"
         + (" (ТЕСТОВАЯ СЕТЬ)" if config.crypto_testnet else ""),

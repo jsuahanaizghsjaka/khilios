@@ -49,10 +49,26 @@ class Config:
 
     channel: str  # @username канала для гейта
 
-    # Оплата картой и через СБП: токен провайдера (ЮKassa) из @BotFather.
-    # Появляется после модерации. До тех пор бот работает и выдаёт триалы —
-    # это осознанно, см. bot.env.example.
+    # Оплата картой и СБП через Telegram Payments: токен провайдера
+    # (ЮKassa) из @BotFather. Появляется после модерации. До тех пор бот
+    # работает и выдаёт триалы — это осознанно, см. bot.env.example.
     payment_token: str
+
+    # Оплата картой и СБП напрямую через ЮKassa: веб-чекаут вместо формы
+    # внутри Telegram. Другая пара ключей, не токен из BotFather — берётся
+    # в личном кабинете ЮKassa. Оба способа независимы и могут работать
+    # одновременно, пока не решите оставить один.
+    yookassa_shop_id: str
+    yookassa_secret_key: str
+
+    # Публичное имя, на которое Caddy проксирует локальный веб-сервер бота
+    # (см. app/webpay.py). Это SUB_HOST панели, путь /pay/* — там же, где
+    # уже отдаётся страница подписки. Без схемы, вида sub.basaltworks.ru.
+    web_pay_host: str
+
+    # На каком порту слушать локальный веб-сервер оплаты. Наружу не
+    # открывается вообще — Caddy проксирует его так же, как API панели.
+    web_pay_port: int
 
     # Telegram Stars. Токен не нужен вообще: Stars — внутренняя валюта
     # Telegram, счёт выставляется с пустым provider_token. Поэтому способ
@@ -80,7 +96,13 @@ class Config:
 
     @property
     def card_enabled(self) -> bool:
+        """Карта и СБП через Telegram Payments (форма внутри Telegram)."""
         return bool(self.payment_token)
+
+    @property
+    def web_pay_enabled(self) -> bool:
+        """Карта и СБП через веб-чекаут ЮKassa (отдельная страница)."""
+        return bool(self.yookassa_shop_id and self.yookassa_secret_key)
 
     @property
     def crypto_enabled(self) -> bool:
@@ -93,7 +115,12 @@ class Config:
         Кнопки тарифов показываются по этому признаку: тариф, который не
         купить ни одним способом, — это кнопка, ведущая в тупик.
         """
-        return self.card_enabled or self.stars_enabled or self.crypto_enabled
+        return (
+            self.card_enabled
+            or self.web_pay_enabled
+            or self.stars_enabled
+            or self.crypto_enabled
+        )
 
     @property
     def antifraud_age_enabled(self) -> bool:
@@ -108,6 +135,10 @@ def load() -> Config:
         panel_api_token=_req("PANEL_API_TOKEN"),
         channel=_req("CHANNEL_USERNAME"),
         payment_token=_opt("PAYMENT_TOKEN"),
+        yookassa_shop_id=_opt("YOOKASSA_SHOP_ID"),
+        yookassa_secret_key=_opt("YOOKASSA_SECRET_KEY"),
+        web_pay_host=_opt("WEB_PAY_HOST", "sub.basaltworks.ru"),
+        web_pay_port=int(_opt("WEB_PAY_PORT", "8081")),
         stars_enabled=_flag("STARS_ENABLED"),
         crypto_token=_opt("CRYPTO_PAY_TOKEN"),
         crypto_testnet=_flag("CRYPTO_TESTNET"),

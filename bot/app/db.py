@@ -50,6 +50,21 @@ CREATE TABLE IF NOT EXISTS crypto_invoices (
     settled_at  TEXT
 );
 
+-- Заказы на оплату через веб-чекаут ЮKassa. Живут отдельно от payments по
+-- той же причине, что и crypto_invoices: здесь заказ создан, там деньги
+-- получены. status идёт из терминологии ЮKassa (pending/succeeded/canceled),
+-- а не своя — чтобы при разборе не переводить туда-обратно.
+CREATE TABLE IF NOT EXISTS web_orders (
+    order_id      TEXT PRIMARY KEY,
+    telegram_id   INTEGER NOT NULL,
+    plan_id       TEXT NOT NULL,
+    amount_rub    INTEGER NOT NULL,
+    yk_payment_id TEXT,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    created_at    TEXT NOT NULL,
+    settled_at    TEXT
+);
+
 -- Напоминания об истечении. Ключ включает expires_at, поэтому новый оплаченный
 -- период получает свой комплект напоминаний, а старые записи ему не мешают.
 CREATE TABLE IF NOT EXISTS reminders (
@@ -291,6 +306,67 @@ class Db:
         )
         await self.conn.commit()
         return cur.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Заказы веб-чекаута (ЮKassa)
+    # ------------------------------------------------------------------
+
+    async def create_web_order(
+        self, order_id: str, telegram_id: int, plan_id: str, amount_rub: int
+    ) -> None:
+        await self.conn.execute(
+            "INSERT INTO web_orders "
+            "(order_id, telegram_id, plan_id, amount_rub, status, created_at) "
+            "VALUES (?, ?, ?, ?, 'pending', ?)",
+            (order_id, telegram_id, plan_id, amount_rub, now()),
+        )
+        await self.conn.commit()
+
+    async def get_web_order(self, order_id: str) -> dict | None:
+        async with self.conn.execute(
+            "SELECT order_id, telegram_id, plan_id, amount_rub, yk_payment_id, "
+            "status FROM web_orders WHERE order_id = ?",
+            (order_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def attach_yk_payment(self, order_id: str, yk_payment_id: str) -> None:
+        """Записать ID платежа ЮKassa, полученный при создании заказа.
+
+        Нужен, чтобы сверять входящий вебхук с ожидаемым платежом, а не
+        доверять только order_id из URL — id платежа ЮKassa непредсказуем
+        и не подделывается тем, кто просто знает наш собственный order_id.
+        """
+        await self.conn.execute(
+            "UPDATE web_orders SET yk_payment_id = ? WHERE order_id = ?",
+            (yk_payment_id, order_id),
+        )
+        await self.conn.commit()
+
+    async def settle_web_order(self, order_id: str, yk_payment_id: str) -> bool:
+        """Отметить заказ оплаченным. False — если уже был отмечен или
+        yk_payment_id не совпадает с записанным при создании заказа.
+
+        Второе условие — не формальность: без сверки чужой вебхук с
+        подставным order_id из другого заказа мог бы закрыть этот как
+        оплаченный, не имея отношения к реальному платежу.
+        """
+        cur = await self.conn.execute(
+            "UPDATE web_orders SET status = 'succeeded', settled_at = ? "
+            "WHERE order_id = ? AND yk_payment_id = ? AND status = 'pending'",
+            (now(), order_id, yk_payment_id),
+        )
+        await self.conn.commit()
+        return cur.rowcount > 0
+
+    async def cancel_web_order(self, order_id: str) -> None:
+        await self.conn.execute(
+            "UPDATE web_orders SET status = 'canceled' "
+            "WHERE order_id = ? AND status = 'pending'",
+            (order_id,),
+        )
+        await self.conn.commit()
 
     # ------------------------------------------------------------------
     # Напоминания
