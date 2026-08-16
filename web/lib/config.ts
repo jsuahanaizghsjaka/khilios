@@ -7,7 +7,7 @@ export const SERVICE = {
   // Бот появится после недели 3. Канал уже есть, и он захардкожен намеренно:
   // на него ссылается половина обещаний сайта («о сбоях пишем сами»), и
   // ссылка не должна пропадать из-за незаданной переменной на Vercel.
-  bot: process.env.NEXT_PUBLIC_BOT_URL ?? "",
+  bot: process.env.NEXT_PUBLIC_BOT_URL || "https://t.me/khilios_vpn_bot",
   channel: process.env.NEXT_PUBLIC_CHANNEL_URL ?? "https://t.me/khilios_vpn",
 
   // Написано на сайте намеренно. Люди нормально относятся к честному

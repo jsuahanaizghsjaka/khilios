@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 
 import pytest
@@ -57,8 +58,18 @@ async def test_repeated_charge_is_detected(db):
     повторная доставка продлевает подписку второй раз бесплатно."""
     await db.get_or_create(1)
     assert await db.charge_seen("charge-1") is False
-    await db.add_payment(1, "standard", 299, "charge-1")
+    assert await db.add_payment(1, "standard", 299, "charge-1") is True
     assert await db.charge_seen("charge-1") is True
+    assert await db.add_payment(1, "standard", 299, "charge-1") is False
+
+
+async def test_simultaneous_duplicate_charge_is_claimed_once(db):
+    await db.get_or_create(1)
+    results = await asyncio.gather(
+        db.add_payment(1, "standard", 299, "charge-race"),
+        db.add_payment(1, "standard", 299, "charge-race"),
+    )
+    assert sorted(results) == [False, True]
 
 
 async def test_reminder_is_sent_once_per_period(db):

@@ -130,18 +130,31 @@ class YooKassaClient:
 
         return yk_id, url
 
-    async def get_payment_status(self, yk_payment_id: str) -> str:
-        """Актуальный статус платежа. Единственный источник истины —
-        см. предупреждение в шапке модуля.
+    async def get_payment(self, yk_payment_id: str) -> tuple[str, int]:
+        """Актуальные статус и сумма (в рублях, округлена вниз до целых)
+        платежа. Единственный источник истины — см. предупреждение в шапке
+        модуля.
+
+        Сумма нужна не меньше статуса: без неё вебхук с чужим payment_id,
+        но на меньшую сумму (например, от отменённого и переоформленного
+        по дешёвке платежа), закрыл бы заказ по полной цене тарифа. Сверка
+        суммы в webpay.py — тот же принцип, что payment_matches_plan для
+        Telegram-платежей: доверяем не порядку событий, а факту от API.
 
         VERIFY: значения статуса — pending / waiting_for_capture / succeeded
-        / canceled, по документации ЮKassa на момент написания.
+        / canceled, структура amount — по документации ЮKassa на момент
+        написания.
         """
         data = await self._request("GET", f"/payments/{yk_payment_id}")
         status = data.get("status")
-        if not status:
-            raise YooKassaError(f"В ответе нет status: {sorted(data)}")
-        return status
+        amount_value = (data.get("amount") or {}).get("value")
+        if not status or amount_value is None:
+            raise YooKassaError(f"В ответе нет status или amount: {sorted(data)}")
+        try:
+            amount_rub = int(float(amount_value))
+        except ValueError as exc:
+            raise YooKassaError(f"amount.value не число: {amount_value!r}") from exc
+        return status, amount_rub
 
 
 def new_order_id() -> str:

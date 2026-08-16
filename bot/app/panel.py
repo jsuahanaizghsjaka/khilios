@@ -4,14 +4,10 @@
 поэтому API панели не приходится открывать наружу вообще.
 
 ────────────────────────────────────────────────────────────────────────
-ВНИМАНИЕ, ПРОЧИТАТЬ ПЕРЕД ПЕРВЫМ ЗАПУСКОМ.
-
-Пути и поля ниже — под API Remnawave, и они меняются между версиями панели.
-Проверить против своей версии ОБЯЗАТЕЛЬНО, до первого живого пользователя:
-панель отдаёт собственную документацию, обычно на /api/docs или /docs.
-
-Всё, что зависит от версии, собрано здесь и помечено VERIFY. Если панель
-отвечает 404 или 422 — расхождение здесь, а не в логике бота.
+Клиент соответствует Remnawave 2.8. В этой версии пользователь адресуется
+числовым ``id``: UUID из старых примеров API больше не подходит для GET и
+action-маршрутов. Перед обновлением панели контракт проверяется тестами этого
+модуля и сверяется с OpenAPI самой установленной панели.
 ────────────────────────────────────────────────────────────────────────
 """
 
@@ -24,10 +20,11 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-# VERIFY: пути API панели.
 EP_USERS = "/api/users"
-EP_USER = "/api/users/{uuid}"
-EP_USER_BY_TELEGRAM = "/api/users/by-telegram-id/{telegram_id}"
+EP_USER = "/api/users/{user_id}"
+EP_USER_BY_USERNAME = "/api/users/by-username/{username}"
+EP_EXTEND = "/api/users/{user_id}/actions/extend"
+EP_DISABLE = "/api/users/{user_id}/actions/disable"
 
 
 class PanelError(Exception):
@@ -43,7 +40,17 @@ class PanelUnavailable(Exception):
 
 
 class PanelClient:
-    def __init__(self, base_url: str, token: str, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        *,
+        internal_squads: tuple[str, ...],
+        timeout: float = 10.0,
+    ) -> None:
+        if not internal_squads:
+            raise ValueError("Нужна хотя бы одна внутренняя группа Remnawave")
+        self._internal_squads = internal_squads
         self._client = httpx.AsyncClient(
             base_url=base_url,
             headers={
@@ -70,7 +77,7 @@ class PanelClient:
         if not resp.content:
             return {}
         payload = resp.json()
-        # VERIFY: Remnawave заворачивает ответ в {"response": {...}}.
+        # Все защищённые методы Remnawave 2.x заворачивают данные в response.
         return payload.get("response", payload) if isinstance(payload, dict) else {}
 
     # ------------------------------------------------------------------
@@ -105,7 +112,6 @@ class PanelClient:
         """
         expires = _expires_at(days)
 
-        # VERIFY: имена полей payload.
         body = {
             "username": f"tg{telegram_id}",
             "telegramId": telegram_id,
@@ -115,47 +121,59 @@ class PanelClient:
             "trafficLimitBytes": 0,  # 0 = без лимита трафика
             "trafficLimitStrategy": "NO_RESET",
             "description": tag,
+            # Без группы пользователь существует, но его подписка не содержит
+            # ни одного узла — внешне это выглядит как нерабочий ключ.
+            "activeInternalSquads": list(self._internal_squads),
         }
 
         data = await self._request("POST", EP_USERS, json=body)
         return _extract(data, expires)
 
     async def get_by_telegram_id(self, telegram_id: int) -> dict | None:
+        """Найти пользователя по стабильному имени, которое создаёт бот.
+
+        Отдельного маршрута ``by-telegram-id`` в Remnawave 2.8 нет. Имя
+        ``tg<id>`` уникально и не содержит пользовательских данных кроме уже
+        известного Telegram ID.
+        """
         try:
             data = await self._request(
-                "GET", EP_USER_BY_TELEGRAM.format(telegram_id=telegram_id)
+                "GET",
+                EP_USER_BY_USERNAME.format(username=f"tg{telegram_id}"),
             )
         except PanelError:
             return None
-        if isinstance(data, list):
-            return data[0] if data else None
         return data or None
 
-    async def extend(self, uuid: str, *, days: int, devices: int) -> tuple[str, str, str]:
-        """Продлить подписку от большей из двух дат: сегодня или текущий конец.
+    async def extend(
+        self, user_id: str, *, days: int, devices: int
+    ) -> tuple[str, str, str]:
+        """Продлить подписку средствами самой панели.
 
-        Продление за неделю до истечения не должно сжигать оплаченный остаток —
-        это первый повод для спора и первый возврат.
+        Action ``extend`` сам прибавляет дни к активному сроку, а для истёкшего
+        считает от текущего момента. После него отдельным PATCH включаем ранее
+        отключённого планировщиком пользователя и обновляем HWID-лимит.
         """
-        current = await self._request("GET", EP_USER.format(uuid=uuid))
-        base = _parse(current.get("expireAt"))
-        now = dt.datetime.now(dt.timezone.utc)
-        start = base if base and base > now else now
-        expires = (start + dt.timedelta(days=days)).isoformat(timespec="seconds")
-
-        # VERIFY: метод обновления — PATCH с uuid в теле у части версий.
+        numeric_id = _numeric_id(user_id)
+        extended = await self._request(
+            "POST",
+            EP_EXTEND.format(user_id=numeric_id),
+            json={"days": days},
+        )
         body = {
-            "uuid": uuid,
-            "expireAt": expires,
+            "id": numeric_id,
             "status": "ACTIVE",
             "hwidDeviceLimit": devices,
         }
         data = await self._request("PATCH", EP_USERS, json=body)
-        return _extract(data, expires, fallback_uuid=uuid)
+        expires = data.get("expireAt") or extended.get("expireAt")
+        if not expires:
+            raise PanelError("После продления панель не вернула expireAt")
+        return _extract(data, expires, fallback_id=str(numeric_id))
 
-    async def disable(self, uuid: str) -> None:
-        body = {"uuid": uuid, "status": "DISABLED"}
-        await self._request("PATCH", EP_USERS, json=body)
+    async def disable(self, user_id: str) -> None:
+        numeric_id = _numeric_id(user_id)
+        await self._request("POST", EP_DISABLE.format(user_id=numeric_id))
 
 
 # ----------------------------------------------------------------------
@@ -167,31 +185,29 @@ def _expires_at(days: int) -> str:
     ).isoformat(timespec="seconds")
 
 
-def _parse(value: str | None) -> dt.datetime | None:
-    if not value:
-        return None
+def _numeric_id(value: str | int) -> int:
     try:
-        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc)
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise PanelError(
+            f"В базе сохранён старый идентификатор панели {value!r}, нужен числовой id"
+        ) from exc
 
 
 def _extract(
-    data: dict, expires: str, fallback_uuid: str | None = None
+    data: dict, expires: str, fallback_id: str | None = None
 ) -> tuple[str, str, str]:
-    """Достать uuid и ссылку на подписку из ответа панели.
+    """Достать числовой id и ссылку на подписку из ответа панели.
 
     Ссылку панель отдаёт сама и она указывает на SUB_HOST — то есть на домен
     подписки, а не на домен сайта. Собирать её здесь руками нельзя: домен
     подписки живёт в конфиге панели, и две копии этого знания разъедутся.
     """
-    uuid = data.get("uuid") or fallback_uuid
-    # VERIFY: имя поля со ссылкой.
+    user_id = data.get("id") or fallback_id
     sub_url = data.get("subscriptionUrl") or data.get("subscription_url")
 
-    if not uuid or not sub_url:
+    if user_id is None or not sub_url:
         raise PanelError(
-            f"В ответе панели нет uuid или ссылки на подписку. Ключи: {sorted(data)}"
+            f"В ответе панели нет id или ссылки на подписку. Ключи: {sorted(data)}"
         )
-    return uuid, sub_url, data.get("expireAt") or expires
+    return str(user_id), sub_url, data.get("expireAt") or expires

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from dataclasses import dataclass
 
 
@@ -39,6 +40,19 @@ def _int_opt(name: str) -> int | None:
         raise RuntimeError(f"{name} должен быть числом, получено {raw!r}") from exc
 
 
+def _uuid_list_req(name: str) -> tuple[str, ...]:
+    raw = _req(name)
+    values = tuple(part.strip() for part in raw.split(",") if part.strip())
+    if not values:
+        raise RuntimeError(f"{name} должен содержать хотя бы один UUID")
+    try:
+        return tuple(str(uuid.UUID(value)) for value in values)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"{name} должен быть списком UUID через запятую, получено {raw!r}"
+        ) from exc
+
+
 @dataclass(frozen=True)
 class Config:
     bot_token: str
@@ -46,6 +60,7 @@ class Config:
 
     panel_api_url: str
     panel_api_token: str
+    panel_internal_squads: tuple[str, ...]
 
     channel: str  # @username канала для гейта
 
@@ -133,6 +148,7 @@ def load() -> Config:
         admin_id=int(_req("ADMIN_TELEGRAM_ID")),
         panel_api_url=_opt("PANEL_API_URL", "http://127.0.0.1:3000").rstrip("/"),
         panel_api_token=_req("PANEL_API_TOKEN"),
+        panel_internal_squads=_uuid_list_req("PANEL_INTERNAL_SQUADS"),
         channel=_req("CHANNEL_USERNAME"),
         payment_token=_opt("PAYMENT_TOKEN"),
         yookassa_shop_id=_opt("YOOKASSA_SHOP_ID"),

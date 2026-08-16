@@ -43,7 +43,11 @@ async def main() -> None:
     db = Db(config.db_path)
     await db.connect()
 
-    panel = PanelClient(config.panel_api_url, config.panel_api_token)
+    panel = PanelClient(
+        config.panel_api_url,
+        config.panel_api_token,
+        internal_squads=config.panel_internal_squads,
+    )
 
     # Проверки на старте. Бот поднимется в любом случае — падать из-за
     # недоступной панели нельзя, она может подняться через минуту, — но

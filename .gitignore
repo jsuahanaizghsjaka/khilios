@@ -24,6 +24,9 @@ node_modules/
 .vercel
 *.tsbuildinfo
 
+# Локальный повторный клон этого же репозитория. Не добавлять как gitlink.
+/khilios/
+
 # Python (бот)
 __pycache__/
 *.py[cod]

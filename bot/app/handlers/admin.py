@@ -45,6 +45,7 @@ async def health(message: Message, config: Config, panel) -> None:
 
     lines = [
         f"Панель: {'отвечает' if alive else 'НЕ ОТВЕЧАЕТ'}",
+        f"Групп с узлами: {len(config.panel_internal_squads)}",
         "",
         "Способы оплаты:",
         f"  карта и СБП в Telegram: {yes(config.card_enabled)}",

@@ -11,7 +11,7 @@ import pytest
 
 from app import handlers, keyboards as kb, texts
 from app.db import User
-from app.handlers.common import menu_view
+from app.handlers.common import menu_view, parse_start_payload
 from app.plans import BY_ID
 
 
@@ -76,6 +76,48 @@ def test_buy_callback_resolves_to_a_plan(plan_id):
     иначе кнопка молча ничего не делает."""
     data = f"{kb.CB_BUY}{plan_id}"
     assert BY_ID.get(data.removeprefix(kb.CB_BUY)) is not None
+
+
+@pytest.mark.parametrize(
+    ("payload", "plan_id", "node_id"),
+    [
+        ("plan_trial_de", "trial", "de"),
+        ("plan_basic_se", "basic", "se"),
+        ("plan_standard_nl", "standard", "nl"),
+        ("plan_year_fi", "year", "fi"),
+        ("site_start_de", None, "de"),
+        ("site_final_fi", None, "fi"),
+    ],
+)
+def test_site_deep_links_are_parsed(payload, plan_id, node_id):
+    intent = parse_start_payload(payload)
+    assert intent is not None
+    assert intent.plan_id == plan_id
+    assert intent.node_id == node_id
+    assert intent.payload == payload
+
+
+@pytest.mark.parametrize(
+    "payload", ["plan_unknown_de", "plan_standard_xx", "garbage", "x" * 65]
+)
+def test_unknown_deep_links_fall_back_to_menu(payload):
+    assert parse_start_payload(payload) is None
+
+
+def test_consent_keeps_site_destination_within_telegram_limit():
+    markup = kb.consent(
+        "https://khilios.net/legal/offer",
+        "https://khilios.net/legal/privacy",
+        "plan_standard_de",
+    )
+    callbacks = [
+        button.callback_data
+        for row in markup.inline_keyboard
+        for button in row
+        if button.callback_data
+    ]
+    assert callbacks == ["consent:plan_standard_de"]
+    assert len(callbacks[0].encode()) <= 64
 
 
 # Словарь из docs/bot-checklist.md: бот — такая же публичная площадка,

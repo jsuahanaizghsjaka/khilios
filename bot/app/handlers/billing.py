@@ -57,6 +57,20 @@ log = logging.getLogger(__name__)
 router = Router()
 
 
+def payment_matches_plan(plan: Plan, currency: str, total_amount: int) -> bool:
+    """Сумма успешного платежа совпадает с выставленным тарифом.
+
+    Для RUB Telegram передаёт копейки, для XTR — целые звёзды. Проверка есть
+    и до оплаты, и после неё: payload выбирает тариф, но не должен позволять
+    выдать дорогой срок по счёту с другой суммой или валютой.
+    """
+    expected = {
+        "RUB": plan.price_rub * 100,
+        "XTR": plan.price_stars,
+    }.get(currency)
+    return expected is not None and expected > 0 and total_amount == expected
+
+
 @router.callback_query(F.data == kb.CB_TARIFFS)
 async def tariffs(call: CallbackQuery, config: Config) -> None:
     text = texts.tariffs()
@@ -230,9 +244,13 @@ async def _send_crypto_invoice(
 @router.pre_checkout_query()
 async def pre_checkout(query: PreCheckoutQuery, bot: Bot) -> None:
     plan = BY_ID.get(query.invoice_payload.removeprefix("plan:"))
-    if plan is None:
+    if plan is None or not payment_matches_plan(
+        plan, query.currency, query.total_amount
+    ):
         await bot.answer_pre_checkout_query(
-            query.id, ok=False, error_message="Тариф больше не доступен."
+            query.id,
+            ok=False,
+            error_message="Тариф или сумма счёта изменились. Откройте тариф заново.",
         )
         return
     await bot.answer_pre_checkout_query(query.id, ok=True)
@@ -260,6 +278,22 @@ async def paid(
     if plan is None:
         log.error("Платёж %s с неизвестным тарифом %r", charge_id, payment.invoice_payload)
         await alert_admin(bot, config, f"Платёж {charge_id} с неизвестным тарифом.")
+        await message.answer(texts.ERROR_ISSUE_FAILED)
+        return
+
+    if not payment_matches_plan(plan, payment.currency, payment.total_amount):
+        log.error(
+            "Платёж %s: неверные сумма/валюта %s %s для тарифа %s",
+            charge_id,
+            payment.currency,
+            payment.total_amount,
+            plan.id,
+        )
+        await alert_admin(
+            bot,
+            config,
+            f"Платёж {charge_id}: сумма или валюта не совпадает с тарифом {plan.id}.",
+        )
         await message.answer(texts.ERROR_ISSUE_FAILED)
         return
 
@@ -302,7 +336,11 @@ async def grant(
     # Деньги записываем ДО обращения к панели. Если панель не ответит, факт
     # оплаты всё равно зафиксирован — иначе при разборе «я платил» опереться
     # будет не на что.
-    await db.add_payment(telegram_id, plan.id, plan.price_rub, charge_id)
+    if not await db.add_payment(
+        telegram_id, plan.id, plan.price_rub, charge_id
+    ):
+        log.info("Платёж %s уже обрабатывался, повторную выдачу пропускаем", charge_id)
+        return False
 
     user = await db.get_or_create(telegram_id)
 

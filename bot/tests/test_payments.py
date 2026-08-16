@@ -11,6 +11,7 @@ import pytest
 
 from app import keyboards as kb
 from app.db import Db
+from app.handlers.billing import payment_matches_plan
 from app.plans import BY_ID, PAID
 
 
@@ -112,6 +113,29 @@ def test_stars_price_is_in_sane_range_of_rub_price():
         )
 
 
+@pytest.mark.parametrize(
+    ("plan_id", "currency", "amount"),
+    [
+        ("basic", "RUB", 19_900),
+        ("standard", "RUB", 29_900),
+        ("year", "RUB", 199_000),
+        ("basic", "XTR", 130),
+        ("standard", "XTR", 196),
+        ("year", "XTR", 1304),
+    ],
+)
+def test_payment_amount_must_match_plan(plan_id, currency, amount):
+    assert payment_matches_plan(BY_ID[plan_id], currency, amount) is True
+
+
+@pytest.mark.parametrize(
+    ("currency", "amount"),
+    [("RUB", 1), ("XTR", 1), ("USD", 29900)],
+)
+def test_wrong_payment_amount_or_currency_is_rejected(currency, amount):
+    assert payment_matches_plan(BY_ID["standard"], currency, amount) is False
+
+
 # --- криптосчета ----------------------------------------------------------
 
 
@@ -145,8 +169,11 @@ async def test_crypto_charge_id_is_idempotent_in_payments(db):
     charge = "crypto:inv-1"
 
     assert await db.charge_seen(charge) is False
-    await db.add_payment(1, "standard", 299, charge)
+    assert await db.add_payment(1, "standard", 299, charge) is True
     assert await db.charge_seen(charge) is True
+    # Повторная запись того же charge_id — идемпотентно, а не исключение:
+    # add_payment теперь атомарно проверяет уникальность сама.
+    assert await db.add_payment(1, "standard", 299, charge) is False
 
 
 # --- веб-заказы (ЮKassa) ---------------------------------------------------

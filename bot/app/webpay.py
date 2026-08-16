@@ -105,10 +105,10 @@ async def handle_webhook(request: web.Request) -> web.Response:
         log.warning("Вебхук ЮKassa без id платежа: %s", payload)
         return web.Response(status=200)
 
-    # НЕ верим payload["object"]["status"] — переспрашиваем API напрямую.
-    # Разбор см. в шапке yookassa.py.
+    # НЕ верим payload["object"]["status"] — переспрашиваем API напрямую,
+    # статус и сумму разом. Разбор см. в шапке yookassa.py.
     try:
-        real_status = await yk.get_payment_status(yk_payment_id)
+        real_status, real_amount_rub = await yk.get_payment(yk_payment_id)
     except (YooKassaError, YooKassaUnavailable) as exc:
         log.error("Не удалось проверить платёж %s: %s", yk_payment_id, exc)
         return web.Response(status=200)
@@ -123,8 +123,23 @@ async def handle_webhook(request: web.Request) -> web.Response:
         await _alert_admin(bot, config, f"Оплата ЮKassa {yk_payment_id} без заказа в базе — проверить руками.")
         return web.Response(status=200)
 
-    if not await db.settle_web_order(order["order_id"], yk_payment_id):
-        log.info("Заказ %s уже закрыт, повторный вебхук", order["order_id"])
+    if real_amount_rub != order["amount_rub"]:
+        # Не сверка на честность заказа (order_id и yk_payment_id уже
+        # совпали), а защита от рассинхрона: если сумма в ЮKassa когда-либо
+        # разойдётся с той, что мы выставили при создании (частичный
+        # возврат, ручная правка в личном кабинете), выдавать полный тариф
+        # по неполной сумме нельзя — тот же принцип, что payment_matches_plan
+        # для Telegram-платежей.
+        log.error(
+            "Заказ %s: сумма ЮKassa %s ₽ не совпадает с ожидаемой %s ₽",
+            order["order_id"], real_amount_rub, order["amount_rub"],
+        )
+        await _alert_admin(
+            bot, config,
+            f"Оплата ЮKassa {yk_payment_id}: сумма {real_amount_rub} ₽ "
+            f"не совпадает с заказом {order['order_id']} ({order['amount_rub']} ₽). "
+            f"Заказ НЕ закрыт, ключ не выдан.",
+        )
         return web.Response(status=200)
 
     plan = BY_ID.get(order["plan_id"])
@@ -140,6 +155,16 @@ async def handle_webhook(request: web.Request) -> web.Response:
     async def _reply(text: str, **kw) -> None:
         await bot.send_message(order["telegram_id"], text, **kw)
 
+    # grant() ВПЕРЕДИ settle_web_order, а не наоборот. add_payment внутри
+    # grant() сама атомарно защищена от повторной выдачи по charge_id
+    # (processed_charges, см. db.py) — значит именно она, а не порядок
+    # вызовов здесь, гарантирует «не выдать дважды». А вот обратный порядок
+    # был бы опасен: упади процесс между settle_web_order (заказ уже
+    # succeeded) и grant() — повторный вебхук нашёл бы заказ уже закрытым,
+    # молча вышел бы и ключ так и не был бы выдан, без единого пинга админу.
+    # При текущем порядке тот же сбой самовосстанавливается: заказ останется
+    # pending, следующая доставка вебхука повторит grant() (безопасно за счёт
+    # идемпотентности) и на этот раз успешно закроет заказ.
     await grant(
         bot=bot,
         db=db,
@@ -151,6 +176,8 @@ async def handle_webhook(request: web.Request) -> web.Response:
         method="yookassa_web",
         reply=_reply,
     )
+
+    await db.settle_web_order(order["order_id"], yk_payment_id)
 
     return web.Response(status=200)
 

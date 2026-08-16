@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 from dataclasses import dataclass
 
@@ -38,6 +39,23 @@ CREATE TABLE IF NOT EXISTS payments (
     charge_id    TEXT,
     created_at   TEXT NOT NULL
 );
+
+-- Атомарный реестр обработанных charge_id. Отдельная таблица позволяет
+-- безопасно обновить существующую базу, где payments ещё не имела UNIQUE.
+CREATE TABLE IF NOT EXISTS processed_charges (
+    charge_id   TEXT PRIMARY KEY,
+    recorded_at TEXT NOT NULL
+);
+
+-- Триггер и INSERT в payments выполняются одной SQLite-транзакцией. Поэтому
+-- две одновременные доставки одного события не успеют обе выдать подписку.
+CREATE TRIGGER IF NOT EXISTS claim_payment_charge
+BEFORE INSERT ON payments
+WHEN NEW.charge_id IS NOT NULL
+BEGIN
+    INSERT INTO processed_charges (charge_id, recorded_at)
+    VALUES (NEW.charge_id, NEW.created_at);
+END;
 
 -- Счета на оплату криптовалютой. Живут отдельно от payments, потому что это
 -- разные факты: здесь счёт выставлен, там деньги получены. Запись переезжает
@@ -124,6 +142,7 @@ class Db:
     def __init__(self, path: str) -> None:
         self._path = path
         self._conn: aiosqlite.Connection | None = None
+        self._payment_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         self._conn = await aiosqlite.connect(self._path)
@@ -131,6 +150,12 @@ class Db:
         # WAL — чтобы фоновая рассылка напоминаний не блокировала хендлеры.
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.executescript(SCHEMA)
+        # Миграция без потери платёжной истории.
+        await self._conn.execute(
+            "INSERT OR IGNORE INTO processed_charges (charge_id, recorded_at) "
+            "SELECT charge_id, MIN(created_at) FROM payments "
+            "WHERE charge_id IS NOT NULL GROUP BY charge_id"
+        )
         await self._conn.commit()
 
     async def close(self) -> None:
@@ -243,13 +268,25 @@ class Db:
 
     async def add_payment(
         self, telegram_id: int, plan_id: str, amount_rub: int, charge_id: str | None
-    ) -> None:
-        await self.conn.execute(
-            "INSERT INTO payments (telegram_id, plan_id, amount_rub, charge_id, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (telegram_id, plan_id, amount_rub, charge_id, now()),
-        )
-        await self.conn.commit()
+    ) -> bool:
+        """Атомарно записать платёж. False — charge_id уже обработан."""
+        # Одна aiosqlite.Connection разделяется всеми хендлерами. Lock не
+        # даёт rollback второго дубля отменить ещё не закоммиченный первый.
+        async with self._payment_lock:
+            try:
+                await self.conn.execute(
+                    "INSERT INTO payments "
+                    "(telegram_id, plan_id, amount_rub, charge_id, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (telegram_id, plan_id, amount_rub, charge_id, now()),
+                )
+                await self.conn.commit()
+                return True
+            except aiosqlite.IntegrityError:
+                await self.conn.rollback()
+                if charge_id is not None and await self.charge_seen(charge_id):
+                    return False
+                raise
 
     async def charge_seen(self, charge_id: str) -> bool:
         """Платёж с таким charge_id уже записан.
@@ -258,7 +295,7 @@ class Db:
         повторная доставка продлевает подписку второй раз бесплатно.
         """
         async with self.conn.execute(
-            "SELECT 1 FROM payments WHERE charge_id = ? LIMIT 1", (charge_id,)
+            "SELECT 1 FROM processed_charges WHERE charge_id = ? LIMIT 1", (charge_id,)
         ) as cur:
             return await cur.fetchone() is not None
 
