@@ -8,7 +8,7 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 
-from .. import fmt, keyboards as kb, texts
+from .. import fmt, keyboards as kb, screens, texts
 from ..config import Config
 from ..db import Db, User
 from ..plans import BY_ID
@@ -110,11 +110,10 @@ def menu_view(user: User) -> tuple[str, object]:
 
 async def show_menu(target: Message | CallbackQuery, user: User) -> None:
     text, markup = menu_view(user)
-    message = target.message if isinstance(target, CallbackQuery) else target
     if isinstance(target, CallbackQuery):
-        await message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+        await screens.edit(target, screens.MENU, text, markup)
     else:
-        await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
+        await screens.send(target, screens.MENU, text, markup)
 
 
 async def show_start_intent(
@@ -126,13 +125,17 @@ async def show_start_intent(
     """Открыть экран, который пользователь выбрал на сайте."""
     if intent is None or intent.plan_id is None:
         text, markup = menu_view(user)
+        asset = screens.MENU
     elif intent.plan_id == "trial":
         if user.had_trial:
             text = texts.TRIAL_ALREADY + "\n\n" + texts.tariffs()
             markup = kb.tariffs(payments_enabled=config.payments_enabled)
+            asset = screens.TARIFFS
         else:
             text, markup = menu_view(user)
+            asset = screens.MENU
     else:
+        asset = screens.TARIFFS
         plan = BY_ID[intent.plan_id]
         if config.payments_enabled:
             text = texts.PICK_METHOD.format(
@@ -144,6 +147,7 @@ async def show_start_intent(
             markup = kb.pay_methods(
                 plan.id,
                 card=config.card_enabled,
+                webpay=config.web_pay_enabled,
                 stars=config.stars_enabled and plan.price_stars > 0,
                 crypto=config.crypto_enabled,
                 stars_price=plan.price_stars,
@@ -156,11 +160,10 @@ async def show_start_intent(
     if note:
         text = note + "\n\n" + text
 
-    message = target.message if isinstance(target, CallbackQuery) else target
     if isinstance(target, CallbackQuery):
-        await message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+        await screens.edit(target, asset, text, markup)
     else:
-        await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
+        await screens.send(target, asset, text, markup)
 
 
 @router.message(CommandStart())
@@ -224,34 +227,38 @@ async def my_subscription(call: CallbackQuery, db: Db) -> None:
         text = texts.SUB_NONE
         markup = kb.back_to_menu()
 
-    await call.message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+    asset = screens.SUCCESS if user.state in {"trial", "active"} else screens.TARIFFS
+    await screens.edit(call, asset, text, markup)
     await call.answer()
 
 
 @router.callback_query(F.data == kb.CB_INSTALL)
 async def install(call: CallbackQuery, config: Config) -> None:
-    await call.message.edit_text(
+    await screens.edit(
+        call,
+        screens.CONNECT,
         texts.INSTALL,
-        reply_markup=kb.install(config.support_url),
-        disable_web_page_preview=True,
+        kb.install(config.support_url),
     )
     await call.answer()
 
 
 @router.callback_query(F.data == kb.CB_SUPPORT)
 async def support(call: CallbackQuery, config: Config) -> None:
-    await call.message.edit_text(
+    await screens.edit(
+        call,
+        screens.SUPPORT,
         texts.SUPPORT,
-        reply_markup=kb.support(config.support_url, config.channel),
-        disable_web_page_preview=True,
+        kb.support(config.support_url, config.channel),
     )
     await call.answer()
 
 
 @router.message(Command("help"))
 async def help_command(message: Message, config: Config) -> None:
-    await message.answer(
+    await screens.send(
+        message,
+        screens.SUPPORT,
         texts.SUPPORT,
-        reply_markup=kb.support(config.support_url, config.channel),
-        disable_web_page_preview=True,
+        kb.support(config.support_url, config.channel),
     )

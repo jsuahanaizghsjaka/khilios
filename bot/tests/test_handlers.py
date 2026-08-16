@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app import handlers, keyboards as kb, texts
+from app import handlers, keyboards as kb, screens, texts
 from app.db import User
 from app.handlers.common import menu_view, parse_start_payload
 from app.plans import BY_ID
@@ -40,13 +40,13 @@ def _buttons(markup) -> list[str]:
 
 def test_fresh_user_is_offered_trial():
     _, markup = menu_view(_user())
-    assert "Попробовать 7 дней" in _buttons(markup)
+    assert any("Попробовать 7 дней" in button for button in _buttons(markup))
 
 
 def test_user_who_had_trial_is_not_offered_it_again():
     user = _user(state="expired", trial_issued_at="2026-08-01T00:00:00+00:00")
     _, markup = menu_view(user)
-    assert "Попробовать 7 дней" not in _buttons(markup)
+    assert not any("Попробовать 7 дней" in button for button in _buttons(markup))
 
 
 def test_active_subscriber_sees_their_subscription():
@@ -57,8 +57,18 @@ def test_active_subscriber_sees_their_subscription():
         devices=5,
     )
     text, markup = menu_view(user)
-    assert "Моя подписка" in _buttons(markup)
+    assert any("Моя подписка" in button for button in _buttons(markup))
     assert "активен до" in text
+
+
+def test_media_assets_exist_and_fit_telegram_captions():
+    for asset in screens.ALL:
+        path = screens.ASSET_DIR / asset
+        assert path.is_file()
+        assert path.stat().st_size < 10 * 1024 * 1024
+
+    captions = [texts.MENU, texts.tariffs(), texts.INSTALL, texts.SUPPORT]
+    assert all(len(caption) <= 1024 for caption in captions)
 
 
 def test_tariffs_keyboard_hides_buy_buttons_without_payment_token():

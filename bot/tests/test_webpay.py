@@ -33,6 +33,9 @@ class FakeBot:
     async def send_message(self, chat_id, text, **kw):
         self.sent.append((chat_id, text))
 
+    async def send_photo(self, chat_id, photo, *, caption, **kw):
+        self.sent.append((chat_id, caption))
+
 
 def _config():
     from app.config import Config

@@ -29,10 +29,10 @@ def consent(
     offer_url: str, privacy_url: str, start_payload: str = ""
 ) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Оферта", url=offer_url)
-    kb.button(text="Политика", url=privacy_url)
+    kb.button(text="📄 Оферта", url=offer_url)
+    kb.button(text="🔒 Политика", url=privacy_url)
     callback = f"{CB_CONSENT}:{start_payload}" if start_payload else CB_CONSENT
-    kb.button(text="Согласен, продолжить", callback_data=callback)
+    kb.button(text="✅ Согласен, продолжить", callback_data=callback)
     kb.adjust(2, 1)
     return kb.as_markup()
 
@@ -40,20 +40,20 @@ def consent(
 def menu(*, has_sub: bool, can_trial: bool) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     if can_trial:
-        kb.button(text="Попробовать 7 дней", callback_data=CB_TRIAL)
+        kb.button(text="🎁 Попробовать 7 дней", callback_data=CB_TRIAL)
     if has_sub:
-        kb.button(text="Моя подписка", callback_data=CB_SUB)
-    kb.button(text="Тарифы", callback_data=CB_TARIFFS)
-    kb.button(text="Как подключить", callback_data=CB_INSTALL)
-    kb.button(text="Поддержка", callback_data=CB_SUPPORT)
+        kb.button(text="🔐 Моя подписка", callback_data=CB_SUB)
+    kb.button(text="💳 Тарифы", callback_data=CB_TARIFFS)
+    kb.button(text="📲 Как подключить", callback_data=CB_INSTALL)
+    kb.button(text="🛟 Поддержка", callback_data=CB_SUPPORT)
     kb.adjust(1, 1, 2, 1)
     return kb.as_markup()
 
 
 def gate(channel: str) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Открыть канал", url=f"https://t.me/{channel.lstrip('@')}")
-    kb.button(text="Я подписался", callback_data=CB_GATE_CHECK)
+    kb.button(text="📢 Открыть канал", url=f"https://t.me/{channel.lstrip('@')}")
+    kb.button(text="✅ Я подписался", callback_data=CB_GATE_CHECK)
     kb.adjust(1)
     return kb.as_markup()
 
@@ -63,10 +63,10 @@ def tariffs(*, payments_enabled: bool) -> InlineKeyboardMarkup:
     if payments_enabled:
         for plan in PAID:
             kb.button(
-                text=f"{plan.name} — {plan.price_rub} ₽",
+                text=f"💳 {plan.name} — {plan.price_rub} ₽",
                 callback_data=f"{CB_BUY}{plan.id}",
             )
-    kb.button(text="Назад", callback_data=CB_MENU)
+    kb.button(text="← Назад", callback_data=CB_MENU)
     kb.adjust(1)
     return kb.as_markup()
 
@@ -92,44 +92,44 @@ def pay_methods(
     """
     kb = InlineKeyboardBuilder()
     if card:
-        kb.button(text="Картой или СБП — в Telegram", callback_data=f"{CB_PAY}{plan_id}:card")
+        kb.button(text="💳 Карта или СБП — в Telegram", callback_data=f"{CB_PAY}{plan_id}:card")
     if webpay:
-        kb.button(text="Картой или СБП — на сайте", callback_data=f"{CB_PAY}{plan_id}:webpay")
+        kb.button(text="🌐 Карта или СБП — на сайте", callback_data=f"{CB_PAY}{plan_id}:webpay")
     if stars:
         kb.button(
-            text=f"Telegram Stars — {stars_price} ★",
+            text=f"⭐ Telegram Stars — {stars_price} ★",
             callback_data=f"{CB_PAY}{plan_id}:stars",
         )
     if crypto:
-        kb.button(text="Криптовалютой", callback_data=f"{CB_PAY}{plan_id}:crypto")
-    kb.button(text="Назад к тарифам", callback_data=CB_TARIFFS)
+        kb.button(text="🪙 Криптовалютой", callback_data=f"{CB_PAY}{plan_id}:crypto")
+    kb.button(text="← Назад к тарифам", callback_data=CB_TARIFFS)
     kb.adjust(1)
     return kb.as_markup()
 
 
 def crypto_invoice(url: str) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Оплатить", url=url)
-    kb.button(text="В меню", callback_data=CB_MENU)
+    kb.button(text="💳 Оплатить", url=url)
+    kb.button(text="🏠 В меню", callback_data=CB_MENU)
     kb.adjust(1)
     return kb.as_markup()
 
 
 def after_issue() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Скачать приложение", url=HAPP_URL)
-    kb.button(text="Как подключить", callback_data=CB_INSTALL)
-    kb.button(text="В меню", callback_data=CB_MENU)
+    kb.button(text="📲 Скачать приложение", url=HAPP_URL)
+    kb.button(text="🧭 Как подключить", callback_data=CB_INSTALL)
+    kb.button(text="🏠 В меню", callback_data=CB_MENU)
     kb.adjust(1)
     return kb.as_markup()
 
 
 def install(support_url: str) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Скачать приложение", url=HAPP_URL)
+    kb.button(text="📲 Скачать приложение", url=HAPP_URL)
     if support_url:
-        kb.button(text="Написать в поддержку", url=support_url)
-    kb.button(text="В меню", callback_data=CB_MENU)
+        kb.button(text="💬 Написать в поддержку", url=support_url)
+    kb.button(text="🏠 В меню", callback_data=CB_MENU)
     kb.adjust(1)
     return kb.as_markup()
 
@@ -137,22 +137,22 @@ def install(support_url: str) -> InlineKeyboardMarkup:
 def support(support_url: str, channel: str) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     if support_url:
-        kb.button(text="Написать в поддержку", url=support_url)
-    kb.button(text="Канал", url=f"https://t.me/{channel.lstrip('@')}")
-    kb.button(text="В меню", callback_data=CB_MENU)
+        kb.button(text="💬 Написать в поддержку", url=support_url)
+    kb.button(text="📢 Канал", url=f"https://t.me/{channel.lstrip('@')}")
+    kb.button(text="🏠 В меню", callback_data=CB_MENU)
     kb.adjust(1)
     return kb.as_markup()
 
 
 def back_to_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data=CB_MENU)]]
+        inline_keyboard=[[InlineKeyboardButton(text="🏠 В меню", callback_data=CB_MENU)]]
     )
 
 
 def renew() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Продлить", callback_data=CB_TARIFFS)]
+            [InlineKeyboardButton(text="🔄 Продлить", callback_data=CB_TARIFFS)]
         ]
     )

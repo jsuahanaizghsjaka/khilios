@@ -13,7 +13,7 @@ import logging
 from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery
 
-from .. import fmt, gate, keyboards as kb, texts
+from .. import fmt, gate, keyboards as kb, screens, texts
 from ..config import Config
 from ..db import Db
 from ..panel import PanelClient, PanelError, PanelUnavailable
@@ -39,7 +39,7 @@ async def issue_trial(
     # 1. Гейт по подписке на канал.
     if not await gate.is_subscribed(bot, config.channel, telegram_id):
         text = texts.GATE_STILL_NOT if call.data == kb.CB_GATE_CHECK else texts.GATE
-        await _edit(call, text, kb.gate(config.channel))
+        await _edit(call, text, kb.gate(config.channel), screens.MENU)
         await call.answer()
         return
 
@@ -50,6 +50,7 @@ async def issue_trial(
             call,
             texts.TRIAL_ALREADY + "\n\n" + texts.tariffs(),
             kb.tariffs(payments_enabled=config.payments_enabled),
+            screens.TARIFFS,
         )
         await call.answer()
         return
@@ -61,6 +62,7 @@ async def issue_trial(
             call,
             texts.TRIAL_TOO_FRESH + "\n\n" + texts.tariffs(),
             kb.tariffs(payments_enabled=config.payments_enabled),
+            screens.TARIFFS,
         )
         await call.answer()
         return
@@ -76,7 +78,12 @@ async def issue_trial(
         )
     except (PanelError, PanelUnavailable) as exc:
         log.error("Не выдан триал для %s: %s", telegram_id, exc)
-        await _edit(call, texts.ERROR_ISSUE_FAILED, kb.support(config.support_url, config.channel))
+        await _edit(
+            call,
+            texts.ERROR_ISSUE_FAILED,
+            kb.support(config.support_url, config.channel),
+            screens.SUPPORT,
+        )
         return
 
     await db.save_subscription(
@@ -94,20 +101,13 @@ async def issue_trial(
         call,
         texts.TRIAL_ISSUED.format(sub_url=sub_url, until=fmt.date(expires_at)),
         kb.after_issue(),
+        screens.SUCCESS,
     )
     log.info("Триал выдан: %s до %s", telegram_id, expires_at)
 
 
-async def _edit(call: CallbackQuery, text: str, markup) -> None:
-    """edit_text, который не падает на повторном нажатии той же кнопки.
-
-    «Я подписался» жмут по три раза подряд, и Telegram отвечает
-    'message is not modified' — это не ошибка, это нетерпеливый человек.
-    """
-    try:
-        await call.message.edit_text(
-            text, reply_markup=markup, disable_web_page_preview=True
-        )
-    except Exception as exc:  # noqa: BLE001 — интересует только текст ошибки
-        if "not modified" not in str(exc):
-            raise
+async def _edit(
+    call: CallbackQuery, text: str, markup, asset: str = screens.MENU
+) -> None:
+    """Обновить один экран, не добавляя повторные сообщения в чат."""
+    await screens.edit(call, asset, text, markup)
