@@ -22,7 +22,9 @@ KEEP="${KEEP:-28}"          # 28 штук по 6 часов = неделя ис�
 # Если это не заполнить, при потере VPS панель восстановится как ни в чём
 # не бывало, а кто за что платил — исчезнет. Хуже всего то, что выяснится
 # это в момент восстановления, когда уже поздно.
-BOT_DIR="${BOT_DIR:-/opt/khilios-bot}"
+BOT_DIR="${BOT_DIR:-/opt/khilios/infra/bot}"
+BOT_SQLITE_CONTAINER="${BOT_SQLITE_CONTAINER:-khilios-bot}"
+BOT_SQLITE_PATH="${BOT_SQLITE_PATH:-/data/khilios.sqlite3}"
 BOT_DB_CONTAINER="${BOT_DB_CONTAINER:-}"   # пусто, если у бота база в файле
 BOT_DB_USER="${BOT_DB_USER:-postgres}"
 BOT_DB_NAME="${BOT_DB_NAME:-postgres}"
@@ -56,7 +58,34 @@ fi
 
 # --- Бот ---
 
-if [[ -n "$BOT_DB_CONTAINER" ]]; then
+if [[ -n "$BOT_SQLITE_CONTAINER" ]]; then
+  log "Снимок SQLite-базы бота из контейнера $BOT_SQLITE_CONTAINER"
+  BOT_SQLITE_TMP="/tmp/khilios-backup-$STAMP.sqlite3"
+  if docker exec "$BOT_SQLITE_CONTAINER" python -c '
+import os
+import sqlite3
+import sys
+
+source_path, target_path = sys.argv[1:]
+source = sqlite3.connect(f"file:{source_path}?mode=ro", uri=True)
+target = sqlite3.connect(target_path)
+try:
+    source.backup(target)
+finally:
+    target.close()
+    source.close()
+os.chmod(target_path, 0o600)
+' "$BOT_SQLITE_PATH" "$BOT_SQLITE_TMP" \
+     && docker cp "$BOT_SQLITE_CONTAINER:$BOT_SQLITE_TMP" "$TMP/bot-db.sqlite3" >/dev/null \
+     && [[ -s "$TMP/bot-db.sqlite3" ]]; then
+    docker exec "$BOT_SQLITE_CONTAINER" rm -f -- "$BOT_SQLITE_TMP" >/dev/null 2>&1 || true
+    log "SQLite-база бота сохранена"
+  else
+    docker exec "$BOT_SQLITE_CONTAINER" rm -f -- "$BOT_SQLITE_TMP" >/dev/null 2>&1 || true
+    rm -f "$TMP/bot-db.sqlite3"
+    log "ОШИБКА: SQLite-база бота не выгрузилась. Бэкап НЕПОЛНЫЙ, разберись сегодня"
+  fi
+elif [[ -n "$BOT_DB_CONTAINER" ]]; then
   log "Дамп базы бота из контейнера $BOT_DB_CONTAINER"
   if docker exec "$BOT_DB_CONTAINER" pg_dump -U "$BOT_DB_USER" -d "$BOT_DB_NAME" \
        --clean --if-exists > "$TMP/bot-db.sql" 2>/dev/null && [[ -s "$TMP/bot-db.sql" ]]; then
