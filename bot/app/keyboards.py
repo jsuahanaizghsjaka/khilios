@@ -117,6 +117,7 @@ def crypto_invoice(url: str) -> InlineKeyboardMarkup:
 
 def after_issue() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Продлить подписку", callback_data=CB_TARIFFS)
     kb.button(text="📲 Скачать приложение", url=HAPP_URL)
     kb.button(text="🧭 Как подключить", callback_data=CB_INSTALL)
     kb.button(text="🏠 В меню", callback_data=CB_MENU)
@@ -153,6 +154,11 @@ def back_to_menu() -> InlineKeyboardMarkup:
 def renew() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Продлить", callback_data=CB_TARIFFS)]
+            [
+                InlineKeyboardButton(
+                    text="🔄 Продлить подписку", callback_data=CB_TARIFFS
+                )
+            ],
+            [InlineKeyboardButton(text="🏠 В меню", callback_data=CB_MENU)],
         ]
     )

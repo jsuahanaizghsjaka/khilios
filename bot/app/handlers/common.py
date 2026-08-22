@@ -219,7 +219,7 @@ async def my_subscription(call: CallbackQuery, db: Db) -> None:
             days=user.days_left or 0,
             sub_url=user.sub_url,
         )
-        markup = kb.back_to_menu()
+        markup = kb.renew()
     elif user.state == "expired":
         text = texts.SUB_EXPIRED.format(until=fmt.date(user.expires_at))
         markup = kb.renew()

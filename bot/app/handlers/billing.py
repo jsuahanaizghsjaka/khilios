@@ -355,8 +355,10 @@ async def grant(
 
     user = await db.get_or_create(telegram_id)
 
+    is_renewal = bool(user.panel_uuid)
+
     try:
-        if user.panel_uuid:
+        if is_renewal:
             uuid, sub_url, expires_at = await panel.extend(
                 user.panel_uuid, days=plan.days, devices=plan.devices
             )
@@ -397,6 +399,7 @@ async def grant(
         telegram_id,
         screens.photo(screens.SUCCESS),
         caption=texts.PAY_OK.format(
+            action="продлена" if is_renewal else "активирована",
             plan=plan.name,
             until=fmt.date(expires_at),
             devices=plan.devices,

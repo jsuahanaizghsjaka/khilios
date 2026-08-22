@@ -61,6 +61,20 @@ def test_active_subscriber_sees_their_subscription():
     assert "активен до" in text
 
 
+def test_active_subscription_has_renew_button():
+    labels = _buttons(kb.renew())
+    assert any("Продлить подписку" in button for button in labels)
+    assert any("В меню" in button for button in labels)
+
+
+def test_success_screen_allows_another_renewal():
+    assert any("Продлить подписку" in button for button in _buttons(kb.after_issue()))
+
+
+def test_tariffs_explain_that_active_period_is_preserved():
+    assert "купленный срок прибавится к текущему" in texts.tariffs()
+
+
 def test_media_assets_exist_and_fit_telegram_captions():
     for asset in screens.ALL:
         path = screens.ASSET_DIR / asset
