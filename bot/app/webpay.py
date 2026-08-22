@@ -1,11 +1,16 @@
-"""Локальный веб-сервер для оплаты через ЮKassa.
+"""Локальный веб-сервер для оплаты через ЮKassa и запуска Happ.
 
 Слушает только localhost — наружу его публикует Caddy на панельной машине,
 проксируя $SUB_HOST/pay/* сюда же, где уже отдаётся страница подписки.
 Открывать порт наружу напрямую не нужно: тот же принцип, что и у API
 панели, к которой бот тоже ходит по localhost.
 
-Два маршрута, и они разной природы:
+Маршруты разной природы:
+
+  GET  /pay/happ                — HTTPS-мост из Telegram в ``happ://``.
+                                   Telegram не принимает произвольные схемы
+                                   в inline-кнопках, поэтому сначала открывает
+                                   нашу страницу, а она уже запускает Happ.
 
   GET  /pay/{order_id}/return   — куда браузер возвращается после оплаты
                                    на странице ЮKassa. Косметика для
@@ -21,7 +26,12 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import html
+import json
 import logging
+from urllib.parse import urlsplit
 
 from aiogram import Bot
 from aiohttp import web
@@ -53,6 +63,31 @@ RETURN_PAGE = """<!doctype html>
 </div></body></html>
 """
 
+HAPP_PAGE = """<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>khilios — подключение</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; background: #0a0e14; color: #e6e9ef;
+         display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; margin: 0; padding: 24px; text-align: center; }}
+  .box {{ max-width: 390px; }}
+  h1 {{ font-size: 22px; margin-bottom: 10px; }}
+  p {{ color: #9aa4b2; line-height: 1.5; }}
+  a {{ display: block; margin-top: 12px; padding: 14px 18px; border-radius: 14px;
+       color: #080b10; background: #9b8cff; text-decoration: none; font-weight: 700; }}
+  a.secondary {{ color: #e6e9ef; background: #171d27; }}
+</style></head>
+<body><div class="box">
+  <h1>Открываем Happ…</h1>
+  <p>Подписка добавится автоматически. При первом запуске подтвердите создание VPN-профиля.</p>
+  <a href="{deep_link}">Открыть Happ</a>
+  <a class="secondary" href="https://happ.info/ru/">Установить Happ</a>
+</div>
+<script>window.location.replace({deep_link_json});</script>
+</body></html>
+"""
+
 
 def _page(title: str, body: str, ok: bool = False) -> web.Response:
     html = RETURN_PAGE.format(title=title, body=body, cls="ok" if ok else "")
@@ -81,6 +116,57 @@ async def handle_return(request: web.Request) -> web.Response:
         "Обрабатываем оплату",
         "Обычно это занимает несколько секунд. Ключ придёт в бот — "
         "эту страницу можно закрыть прямо сейчас, ждать здесь не нужно.",
+    )
+
+
+def _decode_subscription(token: str, expected_host: str) -> str | None:
+    """Декодировать только нашу HTTPS-подписку, не превращая маршрут в
+    открытый запускатель произвольных ссылок и custom schemes."""
+    if not token or len(token) > 2048:
+        return None
+    try:
+        padding = "=" * (-len(token) % 4)
+        sub_url = base64.urlsafe_b64decode(token + padding).decode()
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        return None
+
+    parsed = urlsplit(sub_url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != expected_host.strip().lower()
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return sub_url
+
+
+async def handle_happ(request: web.Request) -> web.Response:
+    """Открыть Happ и передать ему адрес подписки одним нажатием."""
+    config: Config = request.app["config"]
+    sub_url = _decode_subscription(
+        request.query.get("subscription", ""), config.web_pay_host
+    )
+    if sub_url is None:
+        raise web.HTTPBadRequest(text="Некорректная ссылка подключения")
+
+    deep_link = f"happ://add/{sub_url}"
+    page = HAPP_PAGE.format(
+        deep_link=html.escape(deep_link, quote=True),
+        deep_link_json=json.dumps(deep_link).replace("<", "\\u003c"),
+    )
+    return web.Response(
+        text=page,
+        content_type="text/html",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": (
+                "default-src 'none'; style-src 'unsafe-inline'; "
+                "script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"
+            ),
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -200,7 +286,12 @@ async def _alert_admin(bot: Bot, config: Config, text: str) -> None:
 
 
 def build_app(
-    *, db: Db, panel: PanelClient, bot: Bot, config: Config, yookassa: YooKassaClient
+    *,
+    db: Db,
+    panel: PanelClient,
+    bot: Bot,
+    config: Config,
+    yookassa: YooKassaClient | None,
 ) -> web.Application:
     app = web.Application()
     app["db"] = db
@@ -209,8 +300,10 @@ def build_app(
     app["config"] = config
     app["yookassa"] = yookassa
 
-    app.router.add_get("/pay/{order_id}/return", handle_return)
-    app.router.add_post("/pay/webhook/yookassa", handle_webhook)
+    app.router.add_get("/pay/happ", handle_happ)
+    if yookassa is not None:
+        app.router.add_get("/pay/{order_id}/return", handle_return)
+        app.router.add_post("/pay/webhook/yookassa", handle_webhook)
 
     return app
 
@@ -222,5 +315,5 @@ async def run(config: Config, app: web.Application) -> web.AppRunner:
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", config.web_pay_port)
     await site.start()
-    log.info("Веб-сервер оплаты слушает 127.0.0.1:%d", config.web_pay_port)
+    log.info("Веб-сервер бота слушает 127.0.0.1:%d", config.web_pay_port)
     return runner

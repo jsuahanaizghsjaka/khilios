@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app import webpay
+from app import keyboards as kb, webpay
 from app.db import Db
 from app.yookassa import YooKassaError
 
@@ -32,6 +32,9 @@ class FakeBot:
 
     async def send_message(self, chat_id, text, **kw):
         self.sent.append((chat_id, text))
+
+    async def send_photo(self, chat_id, photo, *, caption, **kw):
+        self.sent.append((chat_id, caption))
 
 
 def _config():
@@ -63,6 +66,46 @@ def _config():
 async def _make_client(aiohttp_client, db, *, yk, panel, bot):
     app = webpay.build_app(db=db, panel=panel, bot=bot, config=_config(), yookassa=yk)
     return await aiohttp_client(app)
+
+
+async def test_happ_bridge_opens_subscription_in_app(aiohttp_client, db):
+    panel = AsyncMock()
+    bot = FakeBot()
+    client = await _make_client(aiohttp_client, db, yk=None, panel=panel, bot=bot)
+    sub_url = "https://sub.example.net/api/subscription/token?client=telegram"
+    bridge_url = kb.happ_connect_url(sub_url, "sub.example.net")
+
+    resp = await client.get(bridge_url.removeprefix("https://sub.example.net"))
+    page = await resp.text()
+
+    assert resp.status == 200
+    assert "happ://add/https://sub.example.net/api/subscription/token" in page
+    assert resp.headers["Cache-Control"] == "no-store"
+    assert resp.headers["Referrer-Policy"] == "no-referrer"
+
+
+async def test_happ_bridge_rejects_foreign_subscription_host(aiohttp_client, db):
+    panel = AsyncMock()
+    bot = FakeBot()
+    client = await _make_client(aiohttp_client, db, yk=None, panel=panel, bot=bot)
+    bridge_url = kb.happ_connect_url(
+        "https://attacker.example/subscription/token",
+        "sub.example.net",
+    )
+
+    resp = await client.get(bridge_url.removeprefix("https://sub.example.net"))
+
+    assert resp.status == 400
+
+
+async def test_happ_bridge_rejects_invalid_token(aiohttp_client, db):
+    panel = AsyncMock()
+    bot = FakeBot()
+    client = await _make_client(aiohttp_client, db, yk=None, panel=panel, bot=bot)
+
+    resp = await client.get("/pay/happ?subscription=not-a-valid-link")
+
+    assert resp.status == 400
 
 
 async def test_webhook_ignores_forged_body_status(aiohttp_client, db):

@@ -288,6 +288,17 @@ $ADMIN_HOST {
 	reverse_proxy 127.0.0.1:3000
 }
 
+# Локальный API для бота. Remnawave 3.x проверяет proxy-заголовки и закрывает
+# прямое соединение с 127.0.0.1:3000 без ответа. Этот listener доступен только
+# на loopback и добавляет те же заголовки, что публичный reverse proxy.
+http://127.0.0.1:3002 {
+	reverse_proxy 127.0.0.1:3000 {
+		header_up Host $ADMIN_HOST
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host $ADMIN_HOST
+	}
+}
+
 # Страница подписки. Открыта всем, но только по пути подписки:
 # на этом же имени не должно быть ничего лишнего.
 $SUB_HOST {

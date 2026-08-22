@@ -44,7 +44,7 @@ from aiogram.types import (
     PreCheckoutQuery,
 )
 
-from .. import fmt, keyboards as kb, texts
+from .. import fmt, keyboards as kb, screens, texts
 from ..config import Config
 from ..crypto import CryptoClient, CryptoError, CryptoUnavailable
 from ..db import Db
@@ -76,10 +76,11 @@ async def tariffs(call: CallbackQuery, config: Config) -> None:
     text = texts.tariffs()
     if not config.payments_enabled:
         text += "\n\n" + texts.PAYMENTS_OFF
-    await call.message.edit_text(
+    await screens.edit(
+        call,
+        screens.TARIFFS,
         text,
-        reply_markup=kb.tariffs(payments_enabled=config.payments_enabled),
-        disable_web_page_preview=True,
+        kb.tariffs(payments_enabled=config.payments_enabled),
     )
     await call.answer()
 
@@ -95,14 +96,16 @@ async def pick_method(call: CallbackQuery, config: Config) -> None:
         await call.answer(texts.PAYMENTS_OFF, show_alert=True)
         return
 
-    await call.message.edit_text(
+    await screens.edit(
+        call,
+        screens.TARIFFS,
         texts.PICK_METHOD.format(
             plan=plan.name,
             price=plan.price_rub,
             devices=plan.devices,
             days=plan.days,
         ),
-        reply_markup=kb.pay_methods(
+        kb.pay_methods(
             plan.id,
             card=config.card_enabled,
             webpay=config.web_pay_enabled,
@@ -207,14 +210,18 @@ async def _send_web_checkout(
     except (YooKassaError, YooKassaUnavailable) as exc:
         log.error("Не создан веб-заказ для %s: %s", call.from_user.id, exc)
         await db.cancel_web_order(order_id)
-        await call.message.edit_text(texts.WEBPAY_OFF, reply_markup=kb.back_to_menu())
+        await screens.edit(
+            call, screens.TARIFFS, texts.WEBPAY_OFF, kb.back_to_menu()
+        )
         return
 
     await db.attach_yk_payment(order_id, yk_payment_id)
 
-    await call.message.edit_text(
+    await screens.edit(
+        call,
+        screens.TARIFFS,
         texts.WEBPAY_INVOICE.format(price=plan.price_rub),
-        reply_markup=kb.crypto_invoice(pay_url),
+        kb.crypto_invoice(pay_url),
     )
 
 
@@ -230,14 +237,18 @@ async def _send_crypto_invoice(
         )
     except (CryptoError, CryptoUnavailable) as exc:
         log.error("Не выставлен счёт для %s: %s", call.from_user.id, exc)
-        await call.message.edit_text(texts.CRYPTO_OFF, reply_markup=kb.back_to_menu())
+        await screens.edit(
+            call, screens.TARIFFS, texts.CRYPTO_OFF, kb.back_to_menu()
+        )
         return
 
     await db.add_crypto_invoice(invoice_id, call.from_user.id, plan.id)
 
-    await call.message.edit_text(
+    await screens.edit(
+        call,
+        screens.TARIFFS,
         texts.CRYPTO_INVOICE.format(price=plan.price_rub),
-        reply_markup=kb.crypto_invoice(url),
+        kb.crypto_invoice(url),
     )
 
 
@@ -344,8 +355,10 @@ async def grant(
 
     user = await db.get_or_create(telegram_id)
 
+    is_renewal = bool(user.panel_uuid)
+
     try:
-        if user.panel_uuid:
+        if is_renewal:
             uuid, sub_url, expires_at = await panel.extend(
                 user.panel_uuid, days=plan.days, devices=plan.devices
             )
@@ -382,15 +395,16 @@ async def grant(
         devices=plan.devices,
     )
 
-    await reply(
-        texts.PAY_OK.format(
+    await bot.send_photo(
+        telegram_id,
+        screens.photo(screens.SUCCESS),
+        caption=texts.PAY_OK.format(
+            action="продлена" if is_renewal else "активирована",
             plan=plan.name,
             until=fmt.date(expires_at),
             devices=plan.devices,
-            sub_url=sub_url,
         ),
-        reply_markup=kb.after_issue(),
-        disable_web_page_preview=True,
+        reply_markup=kb.after_issue(sub_url, config.web_pay_host),
     )
 
     log.info("Оплата (%s): %s, тариф %s, до %s", method, telegram_id, plan.id, expires_at)

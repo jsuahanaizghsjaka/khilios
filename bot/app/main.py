@@ -99,18 +99,21 @@ async def main() -> None:
 
     background = asyncio.create_task(scheduler.run(bot, db, panel, config, crypto))
 
-    webpay_runner = None
-    if yookassa is not None:
-        app = webpay.build_app(db=db, panel=panel, bot=bot, config=config, yookassa=yookassa)
-        webpay_runner = await webpay.run(config, app)
+    app = webpay.build_app(
+        db=db,
+        panel=panel,
+        bot=bot,
+        config=config,
+        yookassa=yookassa,
+    )
+    webpay_runner = await webpay.run(config, app)
 
     try:
         log.info("Бот запущен, канал гейта: %s", config.channel)
         await dp.start_polling(bot)
     finally:
         background.cancel()
-        if webpay_runner is not None:
-            await webpay_runner.cleanup()
+        await webpay_runner.cleanup()
         if yookassa is not None:
             await yookassa.close()
         if crypto is not None:

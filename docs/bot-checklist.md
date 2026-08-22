@@ -132,6 +132,8 @@
 `infra/panel/backup.sh`:
 
 - `BOT_DIR` — каталог бота, чтобы забрать `.env` и файловые данные;
+- `BOT_SQLITE_CONTAINER` и `BOT_SQLITE_PATH` — контейнер и путь к SQLite-базе
+  текущего бота (`khilios-bot` и `/data/khilios.sqlite3` по умолчанию);
 - `BOT_DB_CONTAINER` — контейнер БД бота, если он отдельный.
 
 Иначе при потере VPS уедут подписки, история оплат и все начисленные дни,

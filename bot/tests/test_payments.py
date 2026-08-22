@@ -7,11 +7,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app import keyboards as kb
 from app.db import Db
-from app.handlers.billing import payment_matches_plan
+from app.handlers.billing import grant, payment_matches_plan, pick_method
 from app.plans import BY_ID, PAID
 
 
@@ -91,6 +94,35 @@ def test_pay_callback_parses_back_to_plan_and_method(plan_id, method):
     assert parsed_plan == plan_id
     assert parsed_method == method
     assert BY_ID.get(parsed_plan) is not None
+
+
+@pytest.mark.parametrize("plan_id", ["basic", "standard", "year"])
+async def test_buy_callback_opens_yookassa_method(plan_id, monkeypatch):
+    """Нажатие тарифа должно открыть способы оплаты, а не упасть из-за
+    несовпадения сигнатуры screens.edit с именем аргумента клавиатуры."""
+    captured = {}
+
+    async def strict_edit(call, asset, text, markup):
+        captured["markup"] = markup
+
+    monkeypatch.setattr("app.handlers.billing.screens.edit", strict_edit)
+    call = SimpleNamespace(
+        data=f"{kb.CB_BUY}{plan_id}",
+        answer=AsyncMock(),
+    )
+    config = SimpleNamespace(
+        payments_enabled=True,
+        card_enabled=False,
+        web_pay_enabled=True,
+        stars_enabled=False,
+        crypto_enabled=False,
+    )
+
+    await pick_method(call, config)
+
+    labels = _buttons(captured["markup"])
+    assert any("на сайте" in label for label in labels)
+    call.answer.assert_awaited_once()
 
 
 # --- цены -----------------------------------------------------------------
@@ -217,3 +249,62 @@ async def test_web_order_can_be_canceled_before_payment(db):
 
 async def test_get_web_order_returns_none_for_unknown_id(db):
     assert await db.get_web_order("no-such-order") is None
+
+
+# --- продление действующей подписки --------------------------------------
+
+
+async def test_paid_plan_extends_existing_subscription(db):
+    """Новая покупка должна прибавить срок в Remnawave, не создать второго
+    пользователя и не заменить действующую подписку новым ключом."""
+    await db.get_or_create(42)
+    await db.save_subscription(
+        42,
+        state="active",
+        panel_uuid="panel-42",
+        sub_url="https://sub.example/42",
+        expires_at="2030-01-01T00:00:00+00:00",
+        devices=2,
+    )
+
+    panel = SimpleNamespace(
+        extend=AsyncMock(
+            return_value=(
+                "panel-42",
+                "https://sub.example/42",
+                "2030-01-31T00:00:00+00:00",
+            )
+        ),
+        create_user=AsyncMock(),
+    )
+    bot = SimpleNamespace(send_photo=AsyncMock(), send_message=AsyncMock())
+    reply = AsyncMock()
+
+    issued = await grant(
+        bot=bot,
+        db=db,
+        config=SimpleNamespace(
+            admin_id=1,
+            support_url="",
+            channel="@khiliosvpn",
+            web_pay_host="sub.example.net",
+        ),
+        panel=panel,
+        telegram_id=42,
+        plan=BY_ID["basic"],
+        charge_id="test-renewal-1",
+        method="webpay",
+        reply=reply,
+    )
+
+    assert issued is True
+    panel.extend.assert_awaited_once_with("panel-42", days=30, devices=2)
+    panel.create_user.assert_not_awaited()
+
+    user = await db.get_or_create(42)
+    assert user.panel_uuid == "panel-42"
+    assert user.sub_url == "https://sub.example/42"
+    assert user.expires_at == "2030-01-31T00:00:00+00:00"
+
+    caption = bot.send_photo.await_args.kwargs["caption"]
+    assert "подписка продлена" in caption

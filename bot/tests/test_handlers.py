@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app import handlers, keyboards as kb, texts
+from app import handlers, keyboards as kb, screens, texts
 from app.db import User
 from app.handlers.common import menu_view, parse_start_payload
 from app.plans import BY_ID
@@ -38,15 +38,19 @@ def _buttons(markup) -> list[str]:
     return [b.text for row in markup.inline_keyboard for b in row]
 
 
+def _urls(markup) -> list[str]:
+    return [b.url for row in markup.inline_keyboard for b in row if b.url]
+
+
 def test_fresh_user_is_offered_trial():
     _, markup = menu_view(_user())
-    assert "Попробовать 7 дней" in _buttons(markup)
+    assert any("Попробовать 7 дней" in button for button in _buttons(markup))
 
 
 def test_user_who_had_trial_is_not_offered_it_again():
     user = _user(state="expired", trial_issued_at="2026-08-01T00:00:00+00:00")
     _, markup = menu_view(user)
-    assert "Попробовать 7 дней" not in _buttons(markup)
+    assert not any("Попробовать 7 дней" in button for button in _buttons(markup))
 
 
 def test_active_subscriber_sees_their_subscription():
@@ -57,8 +61,63 @@ def test_active_subscriber_sees_their_subscription():
         devices=5,
     )
     text, markup = menu_view(user)
-    assert "Моя подписка" in _buttons(markup)
+    assert any("Моя подписка" in button for button in _buttons(markup))
     assert "активен до" in text
+
+
+def test_active_subscription_has_renew_button():
+    labels = _buttons(kb.renew())
+    assert any("Продлить подписку" in button for button in labels)
+    assert any("В меню" in button for button in labels)
+
+
+def test_success_screen_allows_another_renewal():
+    markup = kb.after_issue(
+        "https://sub.example.net/api/subscription/token",
+        "sub.example.net",
+    )
+    assert any("Продлить подписку" in button for button in _buttons(markup))
+
+
+def test_success_screen_connects_through_happ_bridge_without_exposing_key():
+    sub_url = "https://sub.example.net/api/subscription/secret-token"
+    markup = kb.after_issue(sub_url, "sub.example.net")
+
+    assert any("Подключиться к VPN" in button for button in _buttons(markup))
+    assert _urls(markup)[0].startswith("https://sub.example.net/pay/happ?subscription=")
+    assert all(sub_url not in url for url in _urls(markup))
+
+
+def test_active_subscription_has_connect_renew_and_menu_buttons():
+    markup = kb.active_subscription(
+        "https://sub.example.net/api/subscription/token",
+        "sub.example.net",
+    )
+    labels = _buttons(markup)
+
+    assert any("Подключиться к VPN" in button for button in labels)
+    assert any("Продлить подписку" in button for button in labels)
+    assert any("В меню" in button for button in labels)
+
+
+def test_subscription_messages_do_not_expose_raw_link():
+    assert "{sub_url}" not in texts.TRIAL_ISSUED
+    assert "{sub_url}" not in texts.SUB_ACTIVE
+    assert "{sub_url}" not in texts.PAY_OK
+
+
+def test_tariffs_explain_that_active_period_is_preserved():
+    assert "купленный срок прибавится к текущему" in texts.tariffs()
+
+
+def test_media_assets_exist_and_fit_telegram_captions():
+    for asset in screens.ALL:
+        path = screens.ASSET_DIR / asset
+        assert path.is_file()
+        assert path.stat().st_size < 10 * 1024 * 1024
+
+    captions = [texts.MENU, texts.tariffs(), texts.INSTALL, texts.SUPPORT]
+    assert all(len(caption) <= 1024 for caption in captions)
 
 
 def test_tariffs_keyboard_hides_buy_buttons_without_payment_token():
