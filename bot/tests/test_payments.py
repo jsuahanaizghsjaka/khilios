@@ -14,7 +14,7 @@ import pytest
 
 from app import keyboards as kb
 from app.db import Db
-from app.handlers.billing import grant, payment_matches_plan
+from app.handlers.billing import grant, payment_matches_plan, pick_method
 from app.plans import BY_ID, PAID
 
 
@@ -94,6 +94,35 @@ def test_pay_callback_parses_back_to_plan_and_method(plan_id, method):
     assert parsed_plan == plan_id
     assert parsed_method == method
     assert BY_ID.get(parsed_plan) is not None
+
+
+@pytest.mark.parametrize("plan_id", ["basic", "standard", "year"])
+async def test_buy_callback_opens_yookassa_method(plan_id, monkeypatch):
+    """Нажатие тарифа должно открыть способы оплаты, а не упасть из-за
+    несовпадения сигнатуры screens.edit с именем аргумента клавиатуры."""
+    captured = {}
+
+    async def strict_edit(call, asset, text, markup):
+        captured["markup"] = markup
+
+    monkeypatch.setattr("app.handlers.billing.screens.edit", strict_edit)
+    call = SimpleNamespace(
+        data=f"{kb.CB_BUY}{plan_id}",
+        answer=AsyncMock(),
+    )
+    config = SimpleNamespace(
+        payments_enabled=True,
+        card_enabled=False,
+        web_pay_enabled=True,
+        stars_enabled=False,
+        crypto_enabled=False,
+    )
+
+    await pick_method(call, config)
+
+    labels = _buttons(captured["markup"])
+    assert any("на сайте" in label for label in labels)
+    call.answer.assert_awaited_once()
 
 
 # --- цены -----------------------------------------------------------------

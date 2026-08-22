@@ -105,7 +105,7 @@ async def pick_method(call: CallbackQuery, config: Config) -> None:
             devices=plan.devices,
             days=plan.days,
         ),
-        reply_markup=kb.pay_methods(
+        kb.pay_methods(
             plan.id,
             card=config.card_enabled,
             webpay=config.web_pay_enabled,
