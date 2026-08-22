@@ -207,7 +207,7 @@ async def back_to_menu(call: CallbackQuery, db: Db) -> None:
 
 
 @router.callback_query(F.data == kb.CB_SUB)
-async def my_subscription(call: CallbackQuery, db: Db) -> None:
+async def my_subscription(call: CallbackQuery, db: Db, config: Config) -> None:
     user = await db.get_or_create(call.from_user.id)
 
     if user.state in {"trial", "active"} and user.sub_url:
@@ -217,9 +217,8 @@ async def my_subscription(call: CallbackQuery, db: Db) -> None:
             devices=user.devices or 1,
             until=fmt.date(user.expires_at),
             days=user.days_left or 0,
-            sub_url=user.sub_url,
         )
-        markup = kb.renew()
+        markup = kb.active_subscription(user.sub_url, config.web_pay_host)
     elif user.state == "expired":
         text = texts.SUB_EXPIRED.format(until=fmt.date(user.expires_at))
         markup = kb.renew()
@@ -233,12 +232,18 @@ async def my_subscription(call: CallbackQuery, db: Db) -> None:
 
 
 @router.callback_query(F.data == kb.CB_INSTALL)
-async def install(call: CallbackQuery, config: Config) -> None:
+async def install(call: CallbackQuery, config: Config, db: Db) -> None:
+    user = await db.get_or_create(call.from_user.id)
+    sub_url = user.sub_url if user.state in {"trial", "active"} else None
     await screens.edit(
         call,
         screens.CONNECT,
         texts.INSTALL,
-        kb.install(config.support_url),
+        kb.install(
+            config.support_url,
+            sub_url=sub_url,
+            web_pay_host=config.web_pay_host,
+        ),
     )
     await call.answer()
 

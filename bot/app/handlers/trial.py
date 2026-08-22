@@ -99,8 +99,8 @@ async def issue_trial(
     # 5. Отдать ссылку.
     await _edit(
         call,
-        texts.TRIAL_ISSUED.format(sub_url=sub_url, until=fmt.date(expires_at)),
-        kb.after_issue(),
+        texts.TRIAL_ISSUED.format(until=fmt.date(expires_at)),
+        kb.after_issue(sub_url, config.web_pay_host),
         screens.SUCCESS,
     )
     log.info("Триал выдан: %s до %s", telegram_id, expires_at)

@@ -38,6 +38,10 @@ def _buttons(markup) -> list[str]:
     return [b.text for row in markup.inline_keyboard for b in row]
 
 
+def _urls(markup) -> list[str]:
+    return [b.url for row in markup.inline_keyboard for b in row if b.url]
+
+
 def test_fresh_user_is_offered_trial():
     _, markup = menu_view(_user())
     assert any("Попробовать 7 дней" in button for button in _buttons(markup))
@@ -68,7 +72,38 @@ def test_active_subscription_has_renew_button():
 
 
 def test_success_screen_allows_another_renewal():
-    assert any("Продлить подписку" in button for button in _buttons(kb.after_issue()))
+    markup = kb.after_issue(
+        "https://sub.example.net/api/subscription/token",
+        "sub.example.net",
+    )
+    assert any("Продлить подписку" in button for button in _buttons(markup))
+
+
+def test_success_screen_connects_through_happ_bridge_without_exposing_key():
+    sub_url = "https://sub.example.net/api/subscription/secret-token"
+    markup = kb.after_issue(sub_url, "sub.example.net")
+
+    assert any("Подключиться к VPN" in button for button in _buttons(markup))
+    assert _urls(markup)[0].startswith("https://sub.example.net/pay/happ?subscription=")
+    assert all(sub_url not in url for url in _urls(markup))
+
+
+def test_active_subscription_has_connect_renew_and_menu_buttons():
+    markup = kb.active_subscription(
+        "https://sub.example.net/api/subscription/token",
+        "sub.example.net",
+    )
+    labels = _buttons(markup)
+
+    assert any("Подключиться к VPN" in button for button in labels)
+    assert any("Продлить подписку" in button for button in labels)
+    assert any("В меню" in button for button in labels)
+
+
+def test_subscription_messages_do_not_expose_raw_link():
+    assert "{sub_url}" not in texts.TRIAL_ISSUED
+    assert "{sub_url}" not in texts.SUB_ACTIVE
+    assert "{sub_url}" not in texts.PAY_OK
 
 
 def test_tariffs_explain_that_active_period_is_preserved():

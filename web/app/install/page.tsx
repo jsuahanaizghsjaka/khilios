@@ -47,7 +47,7 @@ const PLATFORMS: Platform[] = [
     id: "ios",
     title: "iPhone и iPad",
     app: "Happ",
-    appUrl: "https://happ.su/main/ru",
+    appUrl: "https://happ.info/ru/",
     steps: [
       { text: "Установите приложение Happ." },
       { text: "Откройте ссылку из бота прямо на телефоне — приложение подхватит " +
@@ -74,7 +74,7 @@ const PLATFORMS: Platform[] = [
     id: "android",
     title: "Android",
     app: "Happ",
-    appUrl: "https://happ.su/main/ru",
+    appUrl: "https://happ.info/ru/",
     steps: [
       { text: "Установите приложение Happ." },
       { text: "Откройте ссылку из бота на телефоне — настройки добавятся сами." },
@@ -112,7 +112,7 @@ const PLATFORMS: Platform[] = [
     id: "macos",
     title: "macOS",
     app: "Happ",
-    appUrl: "https://happ.su/main/ru",
+    appUrl: "https://happ.info/ru/",
     steps: [
       { text: "Установите приложение." },
       { text: "Откройте ссылку из бота или вставьте её в приложение вручную." },

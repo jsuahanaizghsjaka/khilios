@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import base64
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -22,7 +24,18 @@ CB_SUPPORT = "support"
 CB_BUY = "buy:"  # + plan_id — открывает выбор способа оплаты
 CB_PAY = "pay:"  # + plan_id + ":" + method (card / stars / crypto)
 
-HAPP_URL = "https://happ.su/main/ru"
+HAPP_URL = "https://happ.info/ru/"
+
+
+def happ_connect_url(sub_url: str, web_pay_host: str) -> str:
+    """HTTPS-мост для Telegram к deep-link Happ.
+
+    Bot API не разрешает ``happ://`` в inline-кнопке, поэтому ссылка сначала
+    открывает наш локальный веб-маршрут. Base64 нужен не для шифрования, а
+    чтобы ``?``, ``&`` и ``#`` из подписки не сломали query string.
+    """
+    token = base64.urlsafe_b64encode(sub_url.encode()).decode().rstrip("=")
+    return f"https://{web_pay_host.strip().strip('/')}/pay/happ?subscription={token}"
 
 
 def consent(
@@ -115,18 +128,31 @@ def crypto_invoice(url: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def after_issue() -> InlineKeyboardMarkup:
+def after_issue(sub_url: str, web_pay_host: str) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
+    kb.button(
+        text="🚀 Подключиться к VPN",
+        url=happ_connect_url(sub_url, web_pay_host),
+    )
     kb.button(text="🔄 Продлить подписку", callback_data=CB_TARIFFS)
-    kb.button(text="📲 Скачать приложение", url=HAPP_URL)
     kb.button(text="🧭 Как подключить", callback_data=CB_INSTALL)
     kb.button(text="🏠 В меню", callback_data=CB_MENU)
     kb.adjust(1)
     return kb.as_markup()
 
 
-def install(support_url: str) -> InlineKeyboardMarkup:
+def install(
+    support_url: str,
+    *,
+    sub_url: str | None = None,
+    web_pay_host: str = "",
+) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
+    if sub_url and web_pay_host:
+        kb.button(
+            text="🚀 Подключиться к VPN",
+            url=happ_connect_url(sub_url, web_pay_host),
+        )
     kb.button(text="📲 Скачать приложение", url=HAPP_URL)
     if support_url:
         kb.button(text="💬 Написать в поддержку", url=support_url)
@@ -162,3 +188,15 @@ def renew() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🏠 В меню", callback_data=CB_MENU)],
         ]
     )
+
+
+def active_subscription(sub_url: str, web_pay_host: str) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(
+        text="🚀 Подключиться к VPN",
+        url=happ_connect_url(sub_url, web_pay_host),
+    )
+    kb.button(text="🔄 Продлить подписку", callback_data=CB_TARIFFS)
+    kb.button(text="🏠 В меню", callback_data=CB_MENU)
+    kb.adjust(1)
+    return kb.as_markup()

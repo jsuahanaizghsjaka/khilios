@@ -283,7 +283,12 @@ async def test_paid_plan_extends_existing_subscription(db):
     issued = await grant(
         bot=bot,
         db=db,
-        config=SimpleNamespace(admin_id=1, support_url="", channel="@khiliosvpn"),
+        config=SimpleNamespace(
+            admin_id=1,
+            support_url="",
+            channel="@khiliosvpn",
+            web_pay_host="sub.example.net",
+        ),
         panel=panel,
         telegram_id=42,
         plan=BY_ID["basic"],

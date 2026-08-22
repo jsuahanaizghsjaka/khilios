@@ -403,9 +403,8 @@ async def grant(
             plan=plan.name,
             until=fmt.date(expires_at),
             devices=plan.devices,
-            sub_url=sub_url,
         ),
-        reply_markup=kb.after_issue(),
+        reply_markup=kb.after_issue(sub_url, config.web_pay_host),
     )
 
     log.info("Оплата (%s): %s, тариф %s, до %s", method, telegram_id, plan.id, expires_at)
