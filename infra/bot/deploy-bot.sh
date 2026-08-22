@@ -79,9 +79,15 @@ if [[ -z "${TRIAL_MAX_TELEGRAM_ID:-}" ]]; then
   warn "Триал можно выносить новыми аккаунтами. Как откалибровать — в bot.env.example."
 fi
 
-if [[ -z "${PAYMENT_TOKEN:-}" ]]; then
-  warn "PAYMENT_TOKEN пуст — оплата выключена, бот выдаёт только триалы."
-  warn "Это нормально, пока платёжка на модерации."
+PAYMENTS_ON=false
+[[ -n "${PAYMENT_TOKEN:-}" ]] && PAYMENTS_ON=true
+[[ -n "${YOOKASSA_SHOP_ID:-}" && -n "${YOOKASSA_SECRET_KEY:-}" ]] && PAYMENTS_ON=true
+[[ "${STARS_ENABLED:-false}" == "true" ]] && PAYMENTS_ON=true
+[[ -n "${CRYPTO_PAY_TOKEN:-}" ]] && PAYMENTS_ON=true
+
+if [[ $PAYMENTS_ON == false ]]; then
+  warn "Все способы оплаты выключены — бот выдаёт только триалы."
+  warn "Заполни один из платёжных способов в bot.env."
 fi
 
 # --------------------------------------------------------------------------
