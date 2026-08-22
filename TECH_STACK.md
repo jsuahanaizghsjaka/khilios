@@ -195,7 +195,7 @@ BOT_BRANCH=main
   - Стандарт: 5 устройств, 299 ₽/мес (рекомендуемый)
   - Год: 5 устройств, 1990 ₽/год (166 ₽/мес)
 - **Лимит устройств:** по HWID (аппаратный ID клиента)
-- **Гейт:** пользователь должен подписаться на @khilios_vpn перед первой оплатой
+- **Гейт:** пользователь должен подписаться на @khiliosvpn перед первой оплатой
 
 ### Выбранный бот
 - **Вариант 1:** Bedolaga (готовый бот для Xray)
@@ -222,7 +222,7 @@ BOT_BRANCH=main
 
 ---
 
-## 6. Telegram-канал (@khilios_vpn)
+## 6. Telegram-канал (@khiliosvpn)
 
 **Роль:** Главное объявление о сбоях, разборы блокировок, обновления.
 
@@ -452,7 +452,7 @@ BOT_BRANCH=main
 ```env
 STATUS_URL=https://sub.basaltworks.ru/api/status.json
 NEXT_PUBLIC_BOT_URL=https://t.me/khilios_vpn_bot
-NEXT_PUBLIC_CHANNEL_URL=https://t.me/khilios_vpn
+NEXT_PUBLIC_CHANNEL_URL=https://t.me/khiliosvpn
 ```
 
 ### Панель (panel.env)

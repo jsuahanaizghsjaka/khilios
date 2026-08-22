@@ -10,7 +10,7 @@ def test_load_accepts_docker_run_env_file_quotes(monkeypatch) -> None:
         "PANEL_API_URL": '"http://127.0.0.1:3002"',
         "PANEL_API_TOKEN": '"panel-token"',
         "PANEL_INTERNAL_SQUADS": '"96e666e6-3e9d-4970-82ad-7524fec6ef9c"',
-        "CHANNEL_USERNAME": '"@khilios_vpn"',
+        "CHANNEL_USERNAME": '"@khiliosvpn"',
         "STARS_ENABLED": '"false"',
     }
     for name, value in values.items():
@@ -25,5 +25,5 @@ def test_load_accepts_docker_run_env_file_quotes(monkeypatch) -> None:
     assert config.panel_internal_squads == (
         "96e666e6-3e9d-4970-82ad-7524fec6ef9c",
     )
-    assert config.channel == "@khilios_vpn"
+    assert config.channel == "@khiliosvpn"
     assert config.stars_enabled is False

@@ -8,7 +8,7 @@ export const SERVICE = {
   // на него ссылается половина обещаний сайта («о сбоях пишем сами»), и
   // ссылка не должна пропадать из-за незаданной переменной на Vercel.
   bot: process.env.NEXT_PUBLIC_BOT_URL || "https://t.me/khilios_vpn_bot",
-  channel: process.env.NEXT_PUBLIC_CHANNEL_URL ?? "https://t.me/khilios_vpn",
+  channel: process.env.NEXT_PUBLIC_CHANNEL_URL || "https://t.me/khiliosvpn",
 
   // Написано на сайте намеренно. Люди нормально относятся к честному
   // расписанию и плохо — к молчанию. Круглосуточная поддержка одним
