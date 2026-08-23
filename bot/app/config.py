@@ -123,6 +123,12 @@ class Config:
 
     db_path: str
 
+    # Откуда бот читает состояние узлов для рассылки об авариях. Тот же
+    # файл, что отдаётся сайту: генерирует infra/panel/status-json.sh по
+    # cron. Бот стоит на панельной машине, поэтому читает его с диска —
+    # без сети и без авторизации.
+    status_json_path: str
+
     @property
     def card_enabled(self) -> bool:
         """Карта и СБП через Telegram Payments (форма внутри Telegram)."""
@@ -177,4 +183,5 @@ def load() -> Config:
         privacy_url=_opt("PRIVACY_URL", "https://khilios.net/legal/privacy"),
         trial_max_telegram_id=_int_opt("TRIAL_MAX_TELEGRAM_ID"),
         db_path=_opt("DB_PATH", "/data/khilios.sqlite3"),
+        status_json_path=_opt("STATUS_JSON_PATH", "/var/www/status/status.json"),
     )

@@ -85,6 +85,17 @@ CREATE TABLE IF NOT EXISTS web_orders (
 
 -- Напоминания об истечении. Ключ включает expires_at, поэтому новый оплаченный
 -- период получает свой комплект напоминаний, а старые записи ему не мешают.
+-- Последнее известное состояние каждого узла. Нужно, чтобы отличать смену
+-- состояния от «всё как было»: рассылать надо только переходы, иначе
+-- лежащий узел породит сообщение каждые пять минут. Живёт в базе, а не в
+-- памяти процесса, — иначе перезапуск бота выглядел бы как «все узлы
+-- изменились» и разослал бы тревогу по всему парку разом.
+CREATE TABLE IF NOT EXISTS node_state (
+    name       TEXT PRIMARY KEY,
+    state      TEXT NOT NULL,
+    changed_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS reminders (
     telegram_id INTEGER NOT NULL,
     expires_at  TEXT NOT NULL,
@@ -451,6 +462,37 @@ class Db:
         ) as cur:
             rows = await cur.fetchall()
         return [User(**dict(r)) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Состояние узлов и рассылка об авариях
+    # ------------------------------------------------------------------
+
+    async def known_node_states(self) -> dict[str, str]:
+        async with self.conn.execute("SELECT name, state FROM node_state") as cur:
+            return {r["name"]: r["state"] for r in await cur.fetchall()}
+
+    async def remember_node_state(self, name: str, state: str) -> None:
+        await self.conn.execute(
+            "INSERT INTO node_state (name, state, changed_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET state = excluded.state, "
+            "changed_at = excluded.changed_at",
+            (name, state, now()),
+        )
+        await self.conn.commit()
+
+    async def active_subscribers(self) -> list[int]:
+        """Кому вообще есть смысл сообщать об аварии.
+
+        Только те, у кого сейчас есть рабочая подписка. Человеку с истёкшим
+        доступом сообщение про упавший узел — спам: у него и так ничего не
+        работает, и причина другая.
+        """
+        async with self.conn.execute(
+            "SELECT telegram_id FROM users "
+            "WHERE state IN ('trial', 'active') AND expires_at > ?",
+            (now(),),
+        ) as cur:
+            return [r["telegram_id"] for r in await cur.fetchall()]
 
     # ------------------------------------------------------------------
     # Админская сводка

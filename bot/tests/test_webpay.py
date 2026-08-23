@@ -60,6 +60,7 @@ def _config():
         privacy_url="",
         trial_max_telegram_id=None,
         db_path=":memory:",
+        status_json_path="/nonexistent/status.json",
     )
 
 
