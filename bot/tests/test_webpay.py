@@ -85,6 +85,22 @@ async def test_happ_bridge_opens_subscription_in_app(aiohttp_client, db):
     assert resp.headers["Referrer-Policy"] == "no-referrer"
 
 
+async def test_happ_telegram_route_serves_routing_profile(aiohttp_client, db):
+    """Маршрут ничего не принимает снаружи и доступен без подписки: профиль
+    маршрутизации сам по себе безвреден, а человек мог прийти за ним раньше,
+    чем за ключом."""
+    panel = AsyncMock()
+    bot = FakeBot()
+    client = await _make_client(aiohttp_client, db, yk=None, panel=panel, bot=bot)
+
+    resp = await client.get("/pay/happ/telegram")
+    page = await resp.text()
+
+    assert resp.status == 200
+    assert "happ://routing/add/" in page
+    assert resp.headers["Cache-Control"] == "no-store"
+
+
 async def test_happ_bridge_rejects_foreign_subscription_host(aiohttp_client, db):
     panel = AsyncMock()
     bot = FakeBot()

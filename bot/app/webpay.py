@@ -12,6 +12,10 @@
                                    в inline-кнопках, поэтому сначала открывает
                                    нашу страницу, а она уже запускает Happ.
 
+  GET  /pay/happ/telegram       — то же, но добавляет профиль маршрутизации
+                                   «Telegram»: через туннель идёт только он,
+                                   остальное напрямую. См. happ_routing.py.
+
   GET  /pay/{order_id}/return   — куда браузер возвращается после оплаты
                                    на странице ЮKassa. Косметика для
                                    человека, НЕ источник истины о платеже:
@@ -36,6 +40,7 @@ from urllib.parse import urlsplit
 from aiogram import Bot
 from aiohttp import web
 
+from . import happ_routing
 from .config import Config
 from .db import Db
 from .panel import PanelClient
@@ -79,8 +84,8 @@ HAPP_PAGE = """<!doctype html>
   a.secondary {{ color: #e6e9ef; background: #171d27; }}
 </style></head>
 <body><div class="box">
-  <h1>Открываем Happ…</h1>
-  <p>Подписка добавится автоматически. При первом запуске подтвердите создание VPN-профиля.</p>
+  <h1>{heading}</h1>
+  <p>{body}</p>
   <a href="{deep_link}">Открыть Happ</a>
   <a class="secondary" href="https://happ.info/ru/">Установить Happ</a>
 </div>
@@ -150,8 +155,38 @@ async def handle_happ(request: web.Request) -> web.Response:
     if sub_url is None:
         raise web.HTTPBadRequest(text="Некорректная ссылка подключения")
 
-    deep_link = f"happ://add/{sub_url}"
+    return _happ_page(
+        f"happ://add/{sub_url}",
+        heading="Открываем Happ…",
+        body=(
+            "Подписка добавится автоматически. При первом запуске "
+            "подтвердите создание VPN-профиля."
+        ),
+    )
+
+
+async def handle_happ_telegram(request: web.Request) -> web.Response:
+    """Добавить в Happ профиль, где через туннель идёт только Telegram.
+
+    Ссылка ничего не принимает снаружи: профиль собирается у нас и один
+    и тот же для всех. Поэтому здесь нет ни валидации входа, ни способа
+    подсунуть чужой адрес — в отличие от моста подписки выше.
+    """
+    return _happ_page(
+        happ_routing.deep_link(),
+        heading="Добавляем профиль «Telegram»…",
+        body=(
+            "После добавления включите его в Happ в разделе «Маршрутизация». "
+            "Через VPN пойдёт только Telegram — остальное останется напрямую, "
+            "на полной скорости провайдера."
+        ),
+    )
+
+
+def _happ_page(deep_link: str, *, heading: str, body: str) -> web.Response:
     page = HAPP_PAGE.format(
+        heading=html.escape(heading),
+        body=html.escape(body),
         deep_link=html.escape(deep_link, quote=True),
         deep_link_json=json.dumps(deep_link).replace("<", "\\u003c"),
     )
@@ -301,6 +336,7 @@ def build_app(
     app["yookassa"] = yookassa
 
     app.router.add_get("/pay/happ", handle_happ)
+    app.router.add_get("/pay/happ/telegram", handle_happ_telegram)
     if yookassa is not None:
         app.router.add_get("/pay/{order_id}/return", handle_return)
         app.router.add_post("/pay/webhook/yookassa", handle_webhook)

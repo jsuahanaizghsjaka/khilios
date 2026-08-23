@@ -39,7 +39,9 @@ export function isStale(doc: StatusDoc, now = Date.now()): boolean {
   return now - generated > STALE_AFTER_MS;
 }
 
-export async function getStatus(): Promise<StatusDoc | null> {
+export async function getStatus(
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<StatusDoc | null> {
   const url = process.env.STATUS_URL;
 
   if (!url) {
@@ -54,8 +56,12 @@ export async function getStatus(): Promise<StatusDoc | null> {
   }
 
   try {
+    // fresh — для /api/status, который опрашивает браузер: там кэш не нужен,
+    // иначе «в прямом времени» превратится в «раз в минуту, если повезёт».
+    // Первая отрисовка страницы, наоборот, кэшируется: сотня одновременно
+    // открытых вкладок не должна сотней запросов лечь на панель.
     const res = await fetch(url, {
-      next: { revalidate: 60 },
+      ...(fresh ? { cache: "no-store" as const } : { next: { revalidate: 60 } }),
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;

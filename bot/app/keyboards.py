@@ -27,6 +27,16 @@ CB_PAY = "pay:"  # + plan_id + ":" + method (card / stars / crypto)
 HAPP_URL = "https://happ.info/ru/"
 
 
+def happ_telegram_url(web_pay_host: str) -> str:
+    """Ссылка на добавление профиля «только Telegram через VPN».
+
+    Тот же приём, что и у happ_connect_url: Bot API не пускает ``happ://``
+    в inline-кнопку, поэтому сначала открывается наша страница. Параметров
+    нет — профиль один и тот же для всех, собирается на нашей стороне.
+    """
+    return f"https://{web_pay_host.strip().strip('/')}/pay/happ/telegram"
+
+
 def happ_connect_url(sub_url: str, web_pay_host: str) -> str:
     """HTTPS-мост для Telegram к deep-link Happ.
 
@@ -153,6 +163,13 @@ def install(
             text="🚀 Подключиться к VPN",
             url=happ_connect_url(sub_url, web_pay_host),
         )
+    if web_pay_host:
+        # Отдельно от основного подключения и намеренно ниже него: это не
+        # альтернатива подписке, а режим поверх неё. Показываем даже без
+        # подписки — профиль маршрутизации сам по себе безвреден, а человек,
+        # который пришёл «чтобы работал Telegram», должен видеть кнопку с
+        # этим словом, а не догадываться.
+        kb.button(text="✈️ Только Telegram через VPN", url=happ_telegram_url(web_pay_host))
     kb.button(text="📲 Скачать приложение", url=HAPP_URL)
     if support_url:
         kb.button(text="💬 Написать в поддержку", url=support_url)
@@ -196,6 +213,7 @@ def active_subscription(sub_url: str, web_pay_host: str) -> InlineKeyboardMarkup
         text="🚀 Подключиться к VPN",
         url=happ_connect_url(sub_url, web_pay_host),
     )
+    kb.button(text="✈️ Только Telegram через VPN", url=happ_telegram_url(web_pay_host))
     kb.button(text="🔄 Продлить подписку", callback_data=CB_TARIFFS)
     kb.button(text="🏠 В меню", callback_data=CB_MENU)
     kb.adjust(1)

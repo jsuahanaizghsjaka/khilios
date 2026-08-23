@@ -458,7 +458,7 @@ BOT_BRANCH=main
 
 ### Сайт (Vercel)
 ```env
-STATUS_URL=https://sub.basaltworks.ru/api/status.json
+STATUS_URL=https://sub.basaltworks.ru/status/status.json
 NEXT_PUBLIC_BOT_URL=https://t.me/khilios_vpn_bot
 NEXT_PUBLIC_CHANNEL_URL=https://t.me/khiliosvpn
 ```
