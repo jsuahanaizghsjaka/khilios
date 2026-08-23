@@ -1,6 +1,7 @@
 # khilios
 
-VPN-сервис. Панель — Remnawave, ноды — VLESS + Reality, вход в воронку — MTProto-прокси,
+VPN-сервис. Панель — Remnawave, ноды — Shadowsocks, VLESS + Reality и VLESS + XHTTP,
+вход в воронку — MTProto-прокси,
 продажи — Telegram-бот и сайт.
 
 Цель первого цикла: **15–30 платящих пользователей** и проверенная воронка

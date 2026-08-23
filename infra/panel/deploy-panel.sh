@@ -361,7 +361,8 @@ install -d -m 755 /var/www /var/www/status
 
 [[ -f /etc/khilios/nodes.conf ]] || cat > /etc/khilios/nodes.conf <<'EOF'
 # имя|регион|адрес|порт  — адреса наружу не уходят, см. status-json.sh
-# fi-1|Финляндия|203.0.113.20|443
+# fi-1|Финляндия|203.0.113.20|4443
+# nl-1|Нидерланды|198.51.100.7|9443
 EOF
 
 cat > /etc/cron.d/khilios <<EOF

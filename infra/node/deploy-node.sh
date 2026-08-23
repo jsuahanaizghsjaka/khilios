@@ -37,10 +37,24 @@ source ./node.env
 APP_PORT="${APP_PORT:-2222}"
 SSH_PORT="${SSH_PORT:-22}"
 HARDEN_SSH="${HARDEN_SSH:-yes}"
+VPN_TCP_PORTS="${VPN_TCP_PORTS:-1234 4443 8443}"
+VPN_UDP_PORTS="${VPN_UDP_PORTS:-1234}"
+
+read -r -a VPN_TCP_PORT_LIST <<< "$VPN_TCP_PORTS"
+read -r -a VPN_UDP_PORT_LIST <<< "$VPN_UDP_PORTS"
+
+(( ${#VPN_TCP_PORT_LIST[@]} > 0 )) || die "VPN_TCP_PORTS не содержит портов."
+
+for vpn_port in "${VPN_TCP_PORT_LIST[@]}" "${VPN_UDP_PORT_LIST[@]}"; do
+  [[ "$vpn_port" =~ ^[0-9]+$ ]] \
+    && (( vpn_port >= 1 && vpn_port <= 65535 )) \
+    || die "Некорректный VPN-порт: $vpn_port"
+done
 
 grep -qiE 'ubuntu' /etc/os-release || warn "Не Ubuntu. Скрипт писан под Ubuntu 22.04/24.04, дальше на свой риск."
 
 log "Нода: $NODE_NAME | порт ноды: $APP_PORT | SSH: $SSH_PORT | панель: $PANEL_IP"
+log "VPN TCP: $VPN_TCP_PORTS | VPN UDP: ${VPN_UDP_PORTS:-нет}"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -141,7 +155,7 @@ fi
 # --------------------------------------------------------------------------
 # 4. Файрвол
 # --------------------------------------------------------------------------
-# Наружу смотрят только 443 (VLESS/Reality) и SSH.
+# Наружу смотрят только явно перечисленные VPN-порты и SSH.
 # Порт ноды открыт исключительно панели — он не должен быть виден сканерам.
 
 log "Файрвол"
@@ -156,8 +170,14 @@ ufw allow "$SSH_PORT"/tcp comment 'ssh' >/dev/null
 # Нода без входа — это не «неудобно», это переустановка с нуля.
 ufw allow 22/tcp comment 'ssh-fallback: закрыть после проверки' >/dev/null
 
-ufw allow 443/tcp comment 'vless-reality' >/dev/null
-ufw allow 443/udp comment 'vless-reality-udp' >/dev/null
+for vpn_port in "${VPN_TCP_PORT_LIST[@]}"; do
+  ufw allow "$vpn_port"/tcp comment 'khilios-vpn-tcp' >/dev/null
+done
+
+for vpn_port in "${VPN_UDP_PORT_LIST[@]}"; do
+  ufw allow "$vpn_port"/udp comment 'khilios-vpn-udp' >/dev/null
+done
+
 ufw allow from "$PANEL_IP" to any port "$APP_PORT" proto tcp comment 'remnanode <- panel' >/dev/null
 ufw --force enable >/dev/null
 ufw status numbered
@@ -256,21 +276,22 @@ cat <<EOF
 
  IP:          $PUBLIC_IP
  Порт ноды:   $APP_PORT   (открыт только для $PANEL_IP)
+ VPN TCP:     $VPN_TCP_PORTS
+ VPN UDP:     ${VPN_UDP_PORTS:-нет}
  SSH:         ssh -p $SSH_PORT root@$PUBLIC_IP
 
  Дальше в панели (docs/architecture.md, набор протоколов):
    1. Nodes -> Create -> адрес $PUBLIC_IP, порт $APP_PORT
-   2. Два инбаунда на этой ноде, оба на 443, разные транспорты — не мешают
-      друг другу и не открывают лишних портов:
-        - VLESS + Reality, TCP 443 — основной
-        - VLESS + XHTTP, UDP 443 (QUIC) — скоростной
-      Третьего протокола на эту машину НЕ добавлять: каждый лишний
-      слушатель — отпечаток для DPI-сканера, палит и остальные тоже.
-   3. Оба инбаунда — в один Internal Squad, чтобы подписка отдавала сразу
-      обе точки подключения одному пользователю.
+   2. Повесить на ноду входы из профиля и сверить их порты со списком выше:
+        - Shadowsocks TCP+UDP 1234 — запасной совместимый вход
+        - VLESS + Reality TCP 4443 — основной защищённый вход
+        - VLESS + XHTTP TCP 8443 — альтернативный транспорт
+      Для NL используются Reality 9443 и XHTTP 10443, потому что 443 занят Caddy.
+   3. Все входы — в один Internal Squad, чтобы пользователь получил их одной
+      подпиской и Happ мог автоматически выбрать рабочий транспорт.
    4. Выдать тестового пользователя и проверить С МОБИЛЬНОГО ИНТЕРНЕТА,
       а не с домашнего Wi-Fi — блокировки живут у операторов. Проверить
-      именно оба профиля: XHTTP по UDP режут чаще, чем TCP-Reality.
+      отдельно Reality и XHTTP.
 
  Логи:        docker logs -f remnanode
  Перезапуск:  cd /opt/remnanode && docker compose restart

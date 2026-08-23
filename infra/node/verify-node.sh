@@ -2,8 +2,8 @@
 #
 # khilios — проверка ноды перед тем, как пускать на неё людей.
 #
-#   ./verify-node.sh <адрес> [dest] [ssh-порт]
-#   ./verify-node.sh 203.0.113.20 www.cloudflare.com 2202
+#   ./verify-node.sh <адрес> [dest] [ssh-порт] [reality-порт]
+#   ./verify-node.sh 203.0.113.20 www.microsoft.com 2202 4443
 #
 # Запускать С СВОЕЙ МАШИНЫ, а не с ноды: половина проверок в том и состоит,
 # что нода выглядит снаружи так, как задумано.
@@ -21,11 +21,13 @@
 set -uo pipefail   # без -e: скрипт должен пройти все проверки, а не встать на первой
 
 HOST="${1:-}"
-DEST="${2:-www.cloudflare.com}"
+DEST="${2:-www.microsoft.com}"
 SSH_PORT="${3:-}"
-PORT=443
+PORT="${4:-4443}"
 
-[[ -n "$HOST" ]] || { echo "Использование: $0 <адрес> [dest] [ssh-порт]" >&2; exit 2; }
+[[ -n "$HOST" ]] || { echo "Использование: $0 <адрес> [dest] [ssh-порт] [reality-порт]" >&2; exit 2; }
+[[ "$PORT" =~ ^[0-9]+$ ]] && (( PORT >= 1 && PORT <= 65535 )) \
+  || { echo "Некорректный Reality-порт: $PORT" >&2; exit 2; }
 
 ok()   { printf '  \033[1;32mok\033[0m    %s\n' "$*"; }
 bad()  { printf '  \033[1;31mПЛОХО\033[0m %s\n' "$*"; FAILED=$((FAILED+1)); }
@@ -39,7 +41,7 @@ command -v openssl >/dev/null || { echo "нужен openssl" >&2; exit 2; }
 echo "Проверяю ноду $HOST (dest: $DEST)"
 
 # --------------------------------------------------------------------------
-head_ "1. Порт 443 открыт"
+head_ "1. Reality-порт $PORT открыт"
 # --------------------------------------------------------------------------
 
 if timeout 5 bash -c "</dev/tcp/$HOST/$PORT" 2>/dev/null; then

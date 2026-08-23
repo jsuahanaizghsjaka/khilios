@@ -6,7 +6,7 @@
 # 1 апреля 2026 тысячи MTProxy-серверов отвалились за ночь. Считай его расходником
 # и не строй ничего, что сломается вместе с ним.
 #
-#   MTG_DOMAIN=www.cloudflare.com MTG_PORT=8443 ./deploy-mtproto.sh
+#   MTG_DOMAIN=www.cloudflare.com MTG_PORT=2443 ./deploy-mtproto.sh
 #
 # Запускать от root, после deploy-node.sh.
 
@@ -22,8 +22,8 @@ die()  { printf '\n\033[1;31m[x] %s\033[0m\n' "$*" >&2; exit 1; }
 # который не заблокирован и до которого есть маршрут из РФ.
 MTG_DOMAIN="${MTG_DOMAIN:-www.cloudflare.com}"
 
-# 443 обычно уже занят VLESS/Reality, поэтому прокси вешаем рядом.
-MTG_PORT="${MTG_PORT:-8443}"
+# 4443 и 8443 заняты Reality/XHTTP, поэтому MTProto получает отдельный порт.
+MTG_PORT="${MTG_PORT:-2443}"
 
 CONFIG=/etc/mtg.toml
 

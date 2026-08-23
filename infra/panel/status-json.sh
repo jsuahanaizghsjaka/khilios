@@ -33,8 +33,8 @@ command -v jq >/dev/null || { log "ОШИБКА: нужен jq (apt install jq)"
 # Имя и регион уходят наружу, адрес и порт — нет. В status.json адреса не попадают:
 # публичный список серверов это подарок тому, кто их блокирует.
 #
-#   fi-1|Финляндия|203.0.113.20|443
-#   nl-1|Нидерланды|198.51.100.7|443
+#   fi-1|Финляндия|203.0.113.20|4443
+#   nl-1|Нидерланды|198.51.100.7|9443
 
 # status-override — ручное переопределение, по строке на ноду:
 #   fi-1=down
@@ -49,7 +49,7 @@ while IFS='|' read -r name region host port; do
   [[ -z "${name// /}" || "$name" == \#* ]] && continue
 
   name="${name// /}"
-  port="${port:-443}"
+  port="${port:-4443}"
 
   state=down
   if timeout "$TIMEOUT" bash -c "</dev/tcp/$host/$port" 2>/dev/null; then
