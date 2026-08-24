@@ -37,8 +37,8 @@ source ./node.env
 APP_PORT="${APP_PORT:-2222}"
 SSH_PORT="${SSH_PORT:-22}"
 HARDEN_SSH="${HARDEN_SSH:-yes}"
-VPN_TCP_PORTS="${VPN_TCP_PORTS:-1234 4443 8443}"
-VPN_UDP_PORTS="${VPN_UDP_PORTS:-1234}"
+VPN_TCP_PORTS="${VPN_TCP_PORTS:-443 4443 8443}"
+VPN_UDP_PORTS="${VPN_UDP_PORTS:-443}"
 
 read -r -a VPN_TCP_PORT_LIST <<< "$VPN_TCP_PORTS"
 read -r -a VPN_UDP_PORT_LIST <<< "$VPN_UDP_PORTS"
@@ -94,6 +94,74 @@ EOF
 
 if [[ "$(sysctl -n net.ipv4.tcp_congestion_control)" != "bbr" ]]; then
   warn "BBR не включился. Ядро без поддержки? Не блокер, но скорость будет хуже."
+fi
+
+# --------------------------------------------------------------------------
+# 2b. MSS clamping — лечение «подключается, но ничего не грузится»
+# --------------------------------------------------------------------------
+# Симптом, ради которого это здесь: на мобильном интернете VPN «работает»
+# ровно до первого крупного ответа. Handshake проходит (пакеты мелкие),
+# страница начинает грузиться и виснет.
+#
+# Причина. У сотовых операторов трафик абонента идёт в туннеле GTP, и MTU
+# на этом участке меньше 1500 — обычно 1400-1440. Наша нода про это не
+# знает и анонсирует MSS под 1500. Пакет не влезает, роутер по пути обязан
+# прислать ICMP «Fragmentation Needed» — и вот его-то мобильные сети и
+# сжирают. Отправитель не узнаёт, что пакет не дошёл, и молча ретранслирует
+# один и тот же сегмент до таймаута. Это классический PMTU black hole, и
+# со стороны он выглядит именно как «VPN плохо работает на мобильном».
+#
+# Лечение: подписывать в каждом SYN такой MSS, который реально пролезает.
+# clamp-mss-to-pmtu берёт его из известного MTU маршрута, а не из догадки.
+#
+# tcp_mtu_probing выше — второй эшелон: он вытягивает соединение, если MSS
+# всё равно оказался велик. Одного его мало, он реагирует уже на потери.
+
+log "MSS clamping (лечит зависания на мобильных сетях)"
+apt-get install -y -qq iptables >/dev/null 2>&1 || true
+
+cat > /usr/local/sbin/khilios-mss.sh <<'EOF'
+#!/usr/bin/env bash
+# Подгоняет MSS исходящих соединений под реальный MTU пути.
+# -D перед -A: скрипт должен быть идемпотентным, иначе после каждой
+# перезагрузки правил становится на одно больше.
+set -u
+for bin in iptables ip6tables; do
+  command -v "$bin" >/dev/null 2>&1 || continue
+  "$bin" -t mangle -D POSTROUTING -p tcp --tcp-flags SYN,RST SYN \
+    -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
+  "$bin" -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN \
+    -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
+done
+EOF
+chmod 755 /usr/local/sbin/khilios-mss.sh
+
+# Через systemd, а не iptables-persistent: пакет тянет интерактивный
+# debconf и сохраняет заодно всё, что оказалось в таблицах на тот момент,
+# включая правила docker. Здесь же восстанавливается ровно одно правило.
+cat > /etc/systemd/system/khilios-mss.service <<'EOF'
+[Unit]
+Description=khilios: clamp TCP MSS to path MTU
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/khilios-mss.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now khilios-mss.service >/dev/null 2>&1 \
+  || warn "Не удалось включить khilios-mss.service — проверь iptables вручную."
+
+if iptables -t mangle -C POSTROUTING -p tcp --tcp-flags SYN,RST SYN \
+     -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; then
+  log "MSS clamping активен"
+else
+  warn "MSS clamping не встал. На мобильных сетях возможны зависания загрузки."
 fi
 
 # --------------------------------------------------------------------------
@@ -283,10 +351,12 @@ cat <<EOF
  Дальше в панели (docs/architecture.md, набор протоколов):
    1. Nodes -> Create -> адрес $PUBLIC_IP, порт $APP_PORT
    2. Повесить на ноду входы из профиля и сверить их порты со списком выше:
-        - Shadowsocks TCP+UDP 1234 — запасной совместимый вход
-        - VLESS + Reality TCP 4443 — основной защищённый вход
+        - VLESS + Reality TCP 443 — основной вход. Именно 443, а не высокий
+          порт: Reality притворяется обращением к чужому сайту, а настоящий
+          HTTPS живёт на 443. На мобильных сетях это решает.
         - VLESS + XHTTP TCP 8443 — альтернативный транспорт
-      Для NL используются Reality 9443 и XHTTP 10443, потому что 443 занят Caddy.
+      Для NL — 9443 и 10443, потому что 443 занят Caddy; эта нода на
+      мобильном интернете будет работать хуже остальных.
    3. Все входы — в один Internal Squad, чтобы пользователь получил их одной
       подпиской и Happ мог автоматически выбрать рабочий транспорт.
    4. Выдать тестового пользователя и проверить С МОБИЛЬНОГО ИНТЕРНЕТА,
