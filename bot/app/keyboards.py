@@ -144,6 +144,9 @@ def after_issue(sub_url: str, web_pay_host: str) -> InlineKeyboardMarkup:
         text="🚀 Подключиться к VPN",
         url=happ_connect_url(sub_url, web_pay_host),
     )
+    # Не заставляем человека искать этот режим в инструкции после оплаты.
+    # Он добавляет профиль маршрутизации в Happ, а не меняет подписку.
+    kb.button(text="✈️ Только Telegram через VPN", url=happ_telegram_url(web_pay_host))
     kb.button(text="🔄 Продлить подписку", callback_data=CB_TARIFFS)
     kb.button(text="🧭 Как подключить", callback_data=CB_INSTALL)
     kb.button(text="🏠 В меню", callback_data=CB_MENU)
