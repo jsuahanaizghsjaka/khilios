@@ -43,18 +43,11 @@ export function isStale(doc: StatusDoc, now = Date.now()): boolean {
 export async function getStatus(
   { fresh = false }: { fresh?: boolean } = {},
 ): Promise<StatusDoc | null> {
-  const url = process.env.STATUS_URL;
-
-  if (!url) {
-    // В разработке показываем пример, чтобы страницу было видно без панели.
-    // В продакшене — честное «данных нет»: выдуманный статус на странице
-    // статуса хуже, чем её отсутствие.
-    if (process.env.NODE_ENV !== "production") {
-      const sample = await import("@/data/status.sample.json");
-      return sample.default as StatusDoc;
-    }
-    return null;
-  }
+  // Переменная окружения остаётся главным источником: на другом окружении
+  // можно направить сайт на иной приватный статус-источник. Публичный
+  // endpoint панели — безопасный запасной вариант, чтобы отсутствие одной
+  // переменной не превращало рабочую страницу статуса в пустую.
+  const url = process.env.STATUS_URL || "https://sub.basaltworks.ru/status/status.json";
 
   try {
     // fresh — для /api/status, который опрашивает браузер: там кэш не нужен,
