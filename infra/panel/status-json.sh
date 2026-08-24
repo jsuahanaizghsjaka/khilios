@@ -52,8 +52,19 @@ while IFS='|' read -r name region host port; do
   port="${port:-4443}"
 
   state=down
+  latency_ms=null
+  started_ms=$(date +%s%3N)
   if timeout "$TIMEOUT" bash -c "</dev/tcp/$host/$port" 2>/dev/null; then
     state=up
+    finished_ms=$(date +%s%3N)
+    latency_ms=$((finished_ms - started_ms))
+
+    # Это измерение не обещает скорость конкретному абоненту: оно показывает
+    # отклик от панели до узла. Долгий ответ всё же полезен — такой узел не
+    # стоит рекомендовать первым, даже если TCP-порт формально открыт.
+    if ((latency_ms > 450)); then
+      state=degraded
+    fi
   fi
 
   # Ручное переопределение сильнее автопроверки: человек знает про
@@ -78,7 +89,9 @@ while IFS='|' read -r name region host port; do
     --arg region "$region" \
     --arg state "$state" \
     --arg checked_at "$now" \
-    '{name: $name, region: $region, state: $state, checked_at: $checked_at}')")
+    --argjson latency_ms "$latency_ms" \
+    '{name: $name, region: $region, state: $state, checked_at: $checked_at,
+      latency_ms: $latency_ms}')")
 done < "$NODES_CONF"
 
 if ((${#entries[@]} == 0)); then

@@ -16,6 +16,7 @@ export type NodeStatus = {
   region: string;
   state: NodeState;
   checked_at: string;  // ISO 8601
+  latency_ms?: number | null; // Отклик панели до узла, не задержка пользователя.
 };
 
 export type StatusDoc = {

@@ -44,6 +44,7 @@ class NodeState:
     name: str
     region: str
     state: str
+    latency_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,11 @@ def read_status(path: str) -> tuple[list[NodeState], bool]:
             name=str(n.get("name", "")),
             region=str(n.get("region", "")),
             state=str(n.get("state", "")),
+            latency_ms=(
+                int(n["latency_ms"])
+                if isinstance(n.get("latency_ms"), int)
+                else None
+            ),
         )
         for n in doc.get("nodes", [])
         if n.get("name")
@@ -125,6 +131,17 @@ def diff(previous: dict[str, str], current: list[NodeState]) -> list[Incident]:
 
 def healthy_names(nodes: list[NodeState]) -> list[str]:
     return [n.region or n.name for n in nodes if n.state in HEALTHY]
+
+
+def fastest_healthy(nodes: list[NodeState]) -> NodeState | None:
+    """Узел с лучшим текущим откликом от панели.
+
+    Это не обещание пользовательской скорости: путь до телефона зависит от
+    оператора. Но среди одинаково доступных узлов это честная подсказка,
+    куда пробовать переключаться первым.
+    """
+    ready = [n for n in nodes if n.state in HEALTHY and n.latency_ms is not None]
+    return min(ready, key=lambda n: n.latency_ms) if ready else None
 
 
 def _parse_time(value: object) -> dt.datetime | None:

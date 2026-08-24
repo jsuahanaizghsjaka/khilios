@@ -190,10 +190,11 @@ async def _incident_tick(bot: Bot, db: Db, config: Config) -> None:
         return
 
     healthy = incidents.healthy_names(nodes)
+    fastest = incidents.fastest_healthy(nodes)
     recipients = await db.active_subscribers()
 
     for event in events:
-        text = _incident_text(event, healthy)
+        text = _incident_text(event, healthy, fastest)
         log.info(
             "Авария: %s %s -> %s, получателей %d",
             event.node, event.was, event.now, len(recipients),
@@ -210,18 +211,28 @@ async def _incident_tick(bot: Bot, db: Db, config: Config) -> None:
         await _send(bot, config.admin_id, text, kb.back_to_menu())
 
 
-def _incident_text(event: incidents.Incident, healthy: list[str]) -> str:
+def _incident_text(
+    event: incidents.Incident,
+    healthy: list[str],
+    fastest: incidents.NodeState | None,
+) -> str:
     region = event.region or event.node
 
     if event.recovered:
-        return texts.NODE_RECOVERED.format(region=region)
-
-    if not healthy:
+        base = texts.NODE_RECOVERED.format(region=region)
+    elif not healthy:
         return texts.ALL_NODES_DOWN
+    else:
+        others = texts.OTHERS_WORKING.format(names=", ".join(healthy))
+        template = texts.NODE_DEGRADED if event.now == "degraded" else texts.NODE_DOWN
+        base = template.format(region=region, others=others)
 
-    others = texts.OTHERS_WORKING.format(names=", ".join(healthy))
-    template = texts.NODE_DEGRADED if event.now == "degraded" else texts.NODE_DOWN
-    return template.format(region=region, others=others)
+    if fastest is None:
+        return base
+    return (
+        f"{base}\n\n⚡ Сейчас самый быстрый отклик у узла «{fastest.region or fastest.name}» "
+        f"— около {fastest.latency_ms} мс от нашей панели."
+    )
 
 
 async def _tick(bot: Bot, db: Db, panel: PanelClient) -> None:

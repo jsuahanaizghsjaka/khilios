@@ -36,6 +36,12 @@ function formatTime(iso: string): string {
   }).format(d);
 }
 
+function fastestNode(doc: StatusDoc) {
+  return doc.nodes
+    .filter((node) => node.state === "up" && typeof node.latency_ms === "number")
+    .sort((a, b) => (a.latency_ms ?? Infinity) - (b.latency_ms ?? Infinity))[0];
+}
+
 export function LiveStatus({
   initial,
   supportHours,
@@ -113,6 +119,7 @@ export function LiveStatus({
   }
 
   const stale = isStale(doc);
+  const fastest = fastestNode(doc);
 
   return (
     <>
@@ -161,6 +168,19 @@ export function LiveStatus({
           ))}
       </ul>
 
+      {fastest && (
+        <div className="notice">
+          <p>
+            <strong>⚡ Рекомендуем сейчас: {fastest.region}.</strong>{" "}
+            Отклик от панели — около {fastest.latency_ms} мс.
+          </p>
+          <p className="small">
+            Это технический отклик до узла, а не обещание скорости на вашем
+            телефоне: мобильный оператор и регион влияют на результат.
+          </p>
+        </div>
+      )}
+
       {/* Таблица уезжает в собственную прокрутку на узком экране, чтобы
           страница целиком не ехала вбок. aria-live — чтобы человек со
           скринридером узнал об изменении, а не остался с прочитанным
@@ -172,6 +192,7 @@ export function LiveStatus({
               <th scope="col">Узел</th>
               <th scope="col">Регион</th>
               <th scope="col">Состояние</th>
+              <th scope="col">Отклик</th>
               <th scope="col">Проверен</th>
             </tr>
           </thead>
@@ -188,6 +209,7 @@ export function LiveStatus({
                     {STATE_LABEL[node.state]}
                   </span>
                 </td>
+                <td>{typeof node.latency_ms === "number" ? `${node.latency_ms} мс` : "—"}</td>
                 <td>{formatTime(node.checked_at)}</td>
               </tr>
             ))}
