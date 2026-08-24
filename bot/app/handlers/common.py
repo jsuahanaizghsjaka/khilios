@@ -8,7 +8,7 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 
-from .. import fmt, keyboards as kb, screens, texts
+from .. import fmt, incidents, keyboards as kb, screens, texts
 from ..config import Config
 from ..db import Db, User
 from ..plans import BY_ID
@@ -228,6 +228,48 @@ async def my_subscription(call: CallbackQuery, db: Db, config: Config) -> None:
 
     asset = screens.SUCCESS if user.state in {"trial", "active"} else screens.TARIFFS
     await screens.edit(call, asset, text, markup)
+    await call.answer()
+
+
+@router.callback_query(F.data == kb.CB_STATUS)
+async def node_status(call: CallbackQuery, config: Config) -> None:
+    """Показывает актуальные статусы только по явному запросу пользователя.
+
+    Статус — справочная информация, а не повод для массовых push-сообщений.
+    Поэтому файл читается непосредственно в момент нажатия кнопки; никаких
+    фоновых рассылок при смене состояния здесь нет.
+    """
+    nodes, fresh = incidents.read_status(config.status_json_path)
+
+    if not nodes:
+        text = (
+            "📡 <b>Статус узлов</b>\n\n"
+            "Пока нет данных проверки. Попробуйте чуть позже."
+        )
+    elif not fresh:
+        text = (
+            "📡 <b>Статус узлов</b>\n\n"
+            "Данные проверки устарели — лучше повторить запрос через несколько минут."
+        )
+    else:
+        labels = {
+            "up": "✅ Работает",
+            "degraded": "🟡 Возможны перебои",
+            "down": "🔴 Недоступен",
+        }
+        lines = ["📡 <b>Статус узлов сейчас</b>"]
+        for node in nodes:
+            latency = f" · {node.latency_ms} мс" if node.latency_ms is not None else ""
+            lines.append(
+                f"{node.region or node.name} — {labels.get(node.state, '⚪ Проверяется')}{latency}"
+            )
+        lines.append(
+            "\nСкорость зависит от вашего оператора. "
+            "Если точка не подключается — попробуйте другую."
+        )
+        text = "\n".join(lines)
+
+    await screens.edit(call, screens.MENU, text, kb.back_to_menu())
     await call.answer()
 
 

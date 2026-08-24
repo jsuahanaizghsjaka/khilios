@@ -21,6 +21,7 @@ CB_TARIFFS = "tariffs"
 CB_SUB = "sub"
 CB_INSTALL = "install"
 CB_SUPPORT = "support"
+CB_STATUS = "status"
 CB_BUY = "buy:"  # + plan_id — открывает выбор способа оплаты
 CB_PAY = "pay:"  # + plan_id + ":" + method (card / stars / crypto)
 
@@ -68,8 +69,9 @@ def menu(*, has_sub: bool, can_trial: bool) -> InlineKeyboardMarkup:
         kb.button(text="🔐 Моя подписка", callback_data=CB_SUB)
     kb.button(text="💳 Тарифы", callback_data=CB_TARIFFS)
     kb.button(text="📲 Как подключить", callback_data=CB_INSTALL)
+    kb.button(text="📡 Посмотреть статусы", callback_data=CB_STATUS)
     kb.button(text="🛟 Поддержка", callback_data=CB_SUPPORT)
-    kb.adjust(1, 1, 2, 1)
+    kb.adjust(1, 1, 2, 1, 1)
     return kb.as_markup()
 
 

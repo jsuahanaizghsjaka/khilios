@@ -14,7 +14,7 @@ import logging
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 
-from . import fmt, incidents, keyboards as kb, texts
+from . import fmt, keyboards as kb, texts
 from .config import Config
 from .crypto import CryptoClient, CryptoError, CryptoUnavailable
 from .db import Db
@@ -35,15 +35,6 @@ CRYPTO_SECONDS = 20
 # вид фиксируется отдельно в reminders и для одного срока отправляется один раз.
 REMINDERS = (("d3", 3), ("d1", 1), ("d0", 0))
 
-# status.json обновляется раз в 5 минут (cron на панели). Опрашивать чаще
-# смысла нет — увидим тот же файл, — а реже значит опоздать с тревогой.
-INCIDENT_SECONDS = 60
-
-# Пауза между сообщениями при рассылке. Telegram режет отправку примерно
-# на 30 сообщениях в секунду, и при аварии мы шлём всем разом — то есть
-# ровно в тот момент, когда упереться в лимит хуже всего.
-BROADCAST_PAUSE = 0.05
-
 
 async def run(
     bot: Bot,
@@ -60,7 +51,6 @@ async def run(
     """
     tasks = [
         asyncio.create_task(_loop_hourly(bot, db, panel)),
-        asyncio.create_task(_loop_incidents(bot, db, config)),
     ]
     if crypto is not None:
         tasks.append(asyncio.create_task(_loop_crypto(bot, db, panel, config, crypto)))
@@ -142,97 +132,6 @@ async def _loop_crypto(
             log.exception("Ошибка в цикле криптооплат")
 
         await asyncio.sleep(CRYPTO_SECONDS)
-
-
-async def _loop_incidents(bot: Bot, db: Db, config: Config) -> None:
-    """Следит за состоянием узлов и пишет людям первым, когда что-то легло.
-
-    Это и есть отстройка от рынка: конкуренты пассивны — выдали ключ и
-    исчезли, а человек сам гадает, у него сломалось или у всех, и сам
-    перебирает узлы. Здесь наоборот.
-    """
-    while True:
-        try:
-            await _incident_tick(bot, db, config)
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001
-            log.exception("Ошибка в цикле аварий")
-
-        await asyncio.sleep(INCIDENT_SECONDS)
-
-
-async def _incident_tick(bot: Bot, db: Db, config: Config) -> None:
-    nodes, fresh = incidents.read_status(config.status_json_path)
-    if not nodes:
-        return
-
-    known = await db.known_node_states()
-
-    if not fresh:
-        # Файл замер: cron умер или панели плохо. Состояния всё равно
-        # запоминаем — иначе, когда он оживёт, разница накопится и уедет
-        # пачкой тревог задним числом. А вот рассылать по устаревшему
-        # файлу нельзя: получится «узел лежит» про давно поднятый узел.
-        for node in nodes:
-            if known.get(node.name) != node.state:
-                await db.remember_node_state(node.name, node.state)
-        return
-
-    events = incidents.diff(known, nodes)
-
-    # Новые узлы просто запоминаем без рассылки — см. incidents.diff().
-    for node in nodes:
-        if node.name not in known:
-            await db.remember_node_state(node.name, node.state)
-
-    if not events:
-        return
-
-    healthy = incidents.healthy_names(nodes)
-    fastest = incidents.fastest_healthy(nodes)
-    recipients = await db.active_subscribers()
-
-    for event in events:
-        text = _incident_text(event, healthy, fastest)
-        log.info(
-            "Авария: %s %s -> %s, получателей %d",
-            event.node, event.was, event.now, len(recipients),
-        )
-
-        for telegram_id in recipients:
-            await _send(bot, telegram_id, text, kb.back_to_menu())
-            await asyncio.sleep(BROADCAST_PAUSE)
-
-        await db.remember_node_state(event.node, event.now)
-
-        # Админу — тем же сообщением, чтобы он узнал об аварии не от
-        # клиентов. Отдельный текст не нужен: важен факт и время.
-        await _send(bot, config.admin_id, text, kb.back_to_menu())
-
-
-def _incident_text(
-    event: incidents.Incident,
-    healthy: list[str],
-    fastest: incidents.NodeState | None,
-) -> str:
-    region = event.region or event.node
-
-    if event.recovered:
-        base = texts.NODE_RECOVERED.format(region=region)
-    elif not healthy:
-        return texts.ALL_NODES_DOWN
-    else:
-        others = texts.OTHERS_WORKING.format(names=", ".join(healthy))
-        template = texts.NODE_DEGRADED if event.now == "degraded" else texts.NODE_DOWN
-        base = template.format(region=region, others=others)
-
-    if fastest is None:
-        return base
-    return (
-        f"{base}\n\n⚡ Сейчас самый быстрый отклик у узла «{fastest.region or fastest.name}» "
-        f"— около {fastest.latency_ms} мс от нашей панели."
-    )
 
 
 async def _tick(bot: Bot, db: Db, panel: PanelClient) -> None:
