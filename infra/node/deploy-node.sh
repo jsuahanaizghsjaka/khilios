@@ -75,6 +75,13 @@ systemctl enable --now chrony >/dev/null 2>&1 || true
 # --------------------------------------------------------------------------
 
 log "Тюнинг сети (BBR, fq, лимиты файловых дескрипторов)"
+# В некоторых образах tcp_bbr собран модулем и не подгружается от одного
+# sysctl. Без этого ядро молча оставляет cubic/hybla, хотя конфиг просит BBR.
+if modprobe tcp_bbr 2>/dev/null; then
+  printf 'tcp_bbr\n' > /etc/modules-load.d/khilios-bbr.conf
+else
+  warn "Модуль tcp_bbr недоступен: оставляю алгоритм ядра по умолчанию."
+fi
 cat > /etc/sysctl.d/99-khilios.conf <<'EOF'
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
