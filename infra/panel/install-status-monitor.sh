@@ -27,8 +27,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/flock -n /run/khilios-status.lock /usr/local/sbin/khilios-status-json
+ExecStart=/usr/bin/flock -n /run/khilios-status/lock /usr/local/sbin/khilios-status-json
 User=root
+RuntimeDirectory=khilios-status
+RuntimeDirectoryMode=0700
 PrivateTmp=yes
 NoNewPrivileges=yes
 ProtectSystem=strict
