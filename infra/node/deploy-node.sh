@@ -325,10 +325,16 @@ log "Разворачивание remnanode"
 install -d -m 700 /opt/remnanode
 
 if [[ "$REMNAWAVE_ENV_MODE" == secret_key ]]; then
-  cat > /opt/remnanode/.env <<EOF
-NODE_PORT=$APP_PORT
-SECRET_KEY=$SECRET_KEY
-EOF
+  # SECRET_KEY в Remnawave 3 — составная строка, формат которой является
+  # частью TLS-аутентификации. Нельзя разворачивать её через source +
+  # heredoc: кавычки исходного dotenv тогда теряются и панель отвечает
+  # ssl/tls alert handshake failure. Переносим обе строки побайтно.
+  grep -E '^(NODE_PORT|SECRET_KEY)=' node.env > /opt/remnanode/.env
+  [[ "$(grep -c '^SECRET_KEY=' /opt/remnanode/.env)" -eq 1 ]] \
+    || die "В node.env должна быть ровно одна строка SECRET_KEY=."
+  if ! grep -q '^NODE_PORT=' /opt/remnanode/.env; then
+    printf 'NODE_PORT=%s\n' "$APP_PORT" >> /opt/remnanode/.env
+  fi
 else
   cat > /opt/remnanode/.env <<EOF
 APP_PORT=$APP_PORT
