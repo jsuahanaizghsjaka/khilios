@@ -48,7 +48,10 @@ fi
 SSH_PORT="${SSH_PORT:-22}"
 HARDEN_SSH="${HARDEN_SSH:-yes}"
 VPN_TCP_PORTS="${VPN_TCP_PORTS:-443 4443 8443}"
-VPN_UDP_PORTS="${VPN_UDP_PORTS:-443}"
+# В отличие от TCP пустое значение здесь осмысленно: UDP/Hysteria2 нельзя
+# включать до отдельного canary-теста. Используем `-`, а не `:-`, чтобы
+# VPN_UDP_PORTS="" действительно оставлял UDP-порты закрытыми.
+VPN_UDP_PORTS="${VPN_UDP_PORTS-443}"
 # Панель 3.2.3 несовместима с Remnawave Node 3.3.x: новый Node отвечает
 # TLS alert 40 ещё до запуска Xray. Версию образа закрепляем явно, а не
 # используем latest. При обновлении панели этот параметр меняется отдельно
