@@ -49,6 +49,11 @@ SSH_PORT="${SSH_PORT:-22}"
 HARDEN_SSH="${HARDEN_SSH:-yes}"
 VPN_TCP_PORTS="${VPN_TCP_PORTS:-443 4443 8443}"
 VPN_UDP_PORTS="${VPN_UDP_PORTS:-443}"
+# Панель 3.2.3 несовместима с Remnawave Node 3.3.x: новый Node отвечает
+# TLS alert 40 ещё до запуска Xray. Версию образа закрепляем явно, а не
+# используем latest. При обновлении панели этот параметр меняется отдельно
+# и одинаково на всех нодах после сверки официальной матрицы совместимости.
+REMNAWAVE_NODE_IMAGE="${REMNAWAVE_NODE_IMAGE:-remnawave/node:3.2.2}"
 
 read -r -a VPN_TCP_PORT_LIST <<< "$VPN_TCP_PORTS"
 read -r -a VPN_UDP_PORT_LIST <<< "$VPN_UDP_PORTS"
@@ -343,10 +348,10 @@ EOF
 fi
 chmod 600 /opt/remnanode/.env
 
-cat > /opt/remnanode/docker-compose.yml <<'EOF'
+cat > /opt/remnanode/docker-compose.yml <<EOF
 services:
   remnanode:
-    image: remnawave/node:latest
+    image: $REMNAWAVE_NODE_IMAGE
     container_name: remnanode
     hostname: remnanode
     restart: always
