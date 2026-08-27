@@ -56,6 +56,8 @@ if [[ -r $ALERT_ENV ]]; then
   # shellcheck disable=SC1090
   source "$ALERT_ENV"
 fi
+STATUS_ALERT_BOT_TOKEN="${STATUS_ALERT_BOT_TOKEN:-${BOT_TOKEN:-}}"
+STATUS_ALERT_CHAT_ID="${STATUS_ALERT_CHAT_ID:-${ADMIN_TELEGRAM_ID:-}}"
 
 alert_owner() {
   local message=$1

@@ -27,6 +27,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+Environment=ALERT_ENV=/opt/khilios/infra/bot/bot.env
 ExecStart=/usr/bin/flock -n /run/khilios-status/lock /usr/local/sbin/khilios-status-json
 User=root
 RuntimeDirectory=khilios-status
