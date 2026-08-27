@@ -133,3 +133,25 @@ async def test_expired_returns_only_past_subscriptions(db):
     )
 
     assert [u.telegram_id for u in await db.expired()] == [1]
+
+
+async def test_connection_mode_and_minimal_diagnostic_are_persisted(db):
+    assert await db.get_mode(42) == "protect"
+    await db.set_mode(42, "smart")
+    await db.add_connectivity_report(
+        42, operator="mts", region="moscow", mode="smart"
+    )
+
+    assert await db.get_mode(42) == "smart"
+    async with db.conn.execute(
+        "SELECT telegram_id, operator, region, mode FROM connectivity_reports"
+    ) as cur:
+        row = await cur.fetchone()
+    assert tuple(row) == (42, "mts", "moscow", "smart")
+
+
+async def test_connection_diagnostic_rejects_free_form_values(db):
+    with pytest.raises(ValueError):
+        await db.add_connectivity_report(
+            42, operator="custom text", region="moscow", mode="mobile"
+        )

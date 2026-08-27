@@ -1,0 +1,11 @@
+# имя|регион|адрес|порт|режим|транспорт
+# Адреса ниже — документационные, замените отдельными доменами нод с TTL 60.
+# Не используйте khilios.net или basaltworks.ru для доменов нод.
+fi-protect|Финляндия|hel1.nodes.example|443|Защита|XHTTP + Reality
+fi-mobile|Финляндия|hel1.nodes.example|8443|Мобильный|gRPC + Reality
+se-protect|Швеция|sto1.nodes.example|443|Защита|XHTTP + Reality
+se-mobile|Швеция|sto1.nodes.example|8443|Мобильный|gRPC + Reality
+de-protect|Германия|fra1.nodes.example|443|Защита|XHTTP + Reality
+de-mobile|Германия|fra1.nodes.example|8443|Мобильный|gRPC + Reality
+nl-protect|Нидерланды|ams1.nodes.example|9443|Защита|XHTTP + Reality
+nl-mobile|Нидерланды|ams1.nodes.example|10443|Мобильный|gRPC + Reality

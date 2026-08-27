@@ -9,6 +9,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import hmac
+import json
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -99,6 +104,51 @@ async def test_happ_telegram_route_serves_routing_profile(aiohttp_client, db):
     assert resp.status == 200
     assert "happ://routing/add/" in page
     assert resp.headers["Cache-Control"] == "no-store"
+
+
+async def test_happ_smart_route_serves_routing_profile(aiohttp_client, db):
+    panel = AsyncMock()
+    bot = FakeBot()
+    client = await _make_client(aiohttp_client, db, yk=None, panel=panel, bot=bot)
+
+    resp = await client.get("/pay/happ/smart")
+    page = await resp.text()
+
+    assert resp.status == 200
+    assert "happ://routing/add/" in page
+    assert "Умный режим" in page
+
+
+async def test_remnawave_webhook_requires_valid_hmac_and_alerts_owner(
+    aiohttp_client, db
+):
+    panel = AsyncMock()
+    bot = FakeBot()
+    config = replace(_config(), remnawave_webhook_secret="A" * 32)
+    app = webpay.build_app(db=db, panel=panel, bot=bot, config=config, yookassa=None)
+    client = await aiohttp_client(app)
+    raw = json.dumps(
+        {"event": "node.connection_lost", "data": {"name": "FI-1"}},
+        separators=(",", ":"),
+    ).encode()
+
+    invalid = await client.post(
+        "/pay/webhook/remnawave",
+        data=raw,
+        headers={"X-Remnawave-Signature": "bad"},
+    )
+    assert invalid.status == 401
+
+    signature = hmac.new(b"A" * 32, raw, hashlib.sha256).hexdigest()
+    valid = await client.post(
+        "/pay/webhook/remnawave",
+        data=raw,
+        headers={"X-Remnawave-Signature": signature},
+    )
+    await asyncio.sleep(0)
+
+    assert valid.status == 200
+    assert bot.sent == [(999, "🔴 Remnawave: потеряна связь с нодой FI-1.")]
 
 
 async def test_happ_bridge_rejects_foreign_subscription_host(aiohttp_client, db):

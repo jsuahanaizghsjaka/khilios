@@ -70,11 +70,14 @@ async def issue_trial(
     # 4. Создать пользователя в панели.
     await call.answer("Готовлю ключ…")
     try:
+        trial_squads = getattr(config, "trial_squads", None)
+        squad_kwargs = {"squads": trial_squads} if trial_squads else {}
         uuid, sub_url, expires_at = await panel.create_user(
             telegram_id=telegram_id,
             days=TRIAL.days,
             devices=TRIAL.devices,
             tag="trial",
+            **squad_kwargs,
         )
     except (PanelError, PanelUnavailable) as exc:
         log.error("Не выдан триал для %s: %s", telegram_id, exc)

@@ -14,6 +14,8 @@ export type NodeState = "up" | "degraded" | "down";
 export type NodeStatus = {
   name: string;        // Псевдоним. Никаких IP и хостнеймов наружу.
   region: string;
+  mode?: string;
+  transport?: string;
   state: NodeState;
   checked_at: string;  // ISO 8601
   latency_ms?: number | null; // Отклик панели до узла, не задержка пользователя.

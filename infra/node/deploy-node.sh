@@ -65,7 +65,8 @@ export DEBIAN_FRONTEND=noninteractive
 log "Обновление системы и базовые пакеты"
 apt-get update -qq
 apt-get upgrade -y -qq
-apt-get install -y -qq ca-certificates curl gnupg ufw fail2ban chrony jq
+apt-get install -y -qq ca-certificates curl gnupg ufw fail2ban chrony jq \
+  unattended-upgrades
 
 timedatectl set-timezone UTC
 systemctl enable --now chrony >/dev/null 2>&1 || true
@@ -88,15 +89,28 @@ net.ipv4.tcp_congestion_control = bbr
 net.ipv4.tcp_fastopen = 3
 net.core.rmem_max = 16777216
 net.core.wmem_max = 16777216
+net.core.rmem_default = 1048576
+net.core.wmem_default = 1048576
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.core.netdev_max_backlog = 16384
+net.core.somaxconn = 32768
 net.ipv4.tcp_mtu_probing = 1
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_notsent_lowat = 16384
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.ip_local_port_range = 10000 65535
 net.ipv4.ip_forward = 1
-fs.file-max = 1000000
+net.netfilter.nf_conntrack_max = 262144
+fs.file-max = 1048576
 EOF
 sysctl --system >/dev/null
 
 cat > /etc/security/limits.d/99-khilios.conf <<'EOF'
-* soft nofile 1000000
-* hard nofile 1000000
+* soft nofile 1048576
+* hard nofile 1048576
+root soft nofile 1048576
+root hard nofile 1048576
 EOF
 
 if [[ "$(sysctl -n net.ipv4.tcp_congestion_control)" != "bbr" ]]; then
@@ -316,6 +330,10 @@ services:
     network_mode: host
     env_file:
       - .env
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
     logging:
       driver: json-file
       options:

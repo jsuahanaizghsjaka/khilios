@@ -68,3 +68,16 @@ def test_button_url_points_at_our_host():
         kb.happ_telegram_url("sub.example.net")
         == "https://sub.example.net/pay/happ/telegram"
     )
+
+
+def test_smart_profile_routes_sensitive_ru_services_directly():
+    profile = happ_routing.smart_profile()
+    assert profile["GlobalProxy"] == "true"
+    assert "domain:sberbank.ru" in profile["DirectSites"]
+    assert "domain:gosuslugi.ru" in profile["DirectSites"]
+    assert "192.168.0.0/16" in profile["DirectIp"]
+    assert _decode(happ_routing.smart_deep_link()) == profile
+
+
+def test_smart_button_url_points_at_our_host():
+    assert kb.happ_smart_url("sub.example.net") == "https://sub.example.net/pay/happ/smart"

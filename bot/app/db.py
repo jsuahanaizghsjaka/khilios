@@ -96,6 +96,27 @@ CREATE TABLE IF NOT EXISTS node_state (
     changed_at TEXT NOT NULL
 );
 
+-- Выбранный режим хранится отдельно от пользователя: это эксплуатационное
+-- состояние, а не часть платёжной записи. Старые базы обновляются обычным
+-- CREATE TABLE IF NOT EXISTS без ALTER и без риска для истории оплат.
+CREATE TABLE IF NOT EXISTS user_modes (
+    telegram_id INTEGER PRIMARY KEY,
+    mode        TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+-- Минимальная диагностика кнопки «Не подключается?». Никаких текстов,
+-- телефонов и точной геопозиции: только выбранные оператор, макрорегион,
+-- режим и время. Этого достаточно, чтобы увидеть операторскую блокировку.
+CREATE TABLE IF NOT EXISTS connectivity_reports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER NOT NULL,
+    operator    TEXT NOT NULL,
+    region      TEXT NOT NULL,
+    mode        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS reminders (
     telegram_id INTEGER NOT NULL,
     expires_at  TEXT NOT NULL,
@@ -272,6 +293,47 @@ class Db:
         if mark_trial:
             fields["trial_issued_at"] = now()
         await self._update(telegram_id, **fields)
+
+    # ------------------------------------------------------------------
+    # Режим подключения и обезличенная диагностика сети
+    # ------------------------------------------------------------------
+
+    async def get_mode(self, telegram_id: int) -> str:
+        async with self.conn.execute(
+            "SELECT mode FROM user_modes WHERE telegram_id = ?", (telegram_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        return str(row["mode"]) if row else "protect"
+
+    async def set_mode(self, telegram_id: int, mode: str) -> None:
+        if mode not in {"protect", "mobile", "speed", "smart", "resilient"}:
+            raise ValueError(f"Неизвестный режим: {mode}")
+        await self.conn.execute(
+            "INSERT INTO user_modes (telegram_id, mode, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(telegram_id) DO UPDATE SET mode = excluded.mode, "
+            "updated_at = excluded.updated_at",
+            (telegram_id, mode, now()),
+        )
+        await self.conn.commit()
+
+    async def add_connectivity_report(
+        self,
+        telegram_id: int,
+        *,
+        operator: str,
+        region: str,
+        mode: str,
+    ) -> None:
+        allowed_operators = {"mts", "megafon", "beeline", "t2", "yota", "other"}
+        allowed_regions = {"moscow", "spb", "other"}
+        if operator not in allowed_operators or region not in allowed_regions:
+            raise ValueError("Некорректные данные отчёта о соединении")
+        await self.conn.execute(
+            "INSERT INTO connectivity_reports "
+            "(telegram_id, operator, region, mode, created_at) VALUES (?, ?, ?, ?, ?)",
+            (telegram_id, operator, region, mode, now()),
+        )
+        await self.conn.commit()
 
     # ------------------------------------------------------------------
     # Оплаты

@@ -176,6 +176,10 @@ if [[ -n "$SSH_PORT" ]] && command -v ssh >/dev/null 2>&1; then
   R=$(timeout 20 ssh -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
         "root@$HOST" '
           echo "BBR=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)"
+          echo "RMEM=$(sysctl -n net.core.rmem_default 2>/dev/null)"
+          echo "CONNTRACK=$(sysctl -n net.netfilter.nf_conntrack_max 2>/dev/null)"
+          echo "NOFILE=$(docker inspect -f "{{.HostConfig.Ulimits}}" remnanode 2>/dev/null)"
+          echo "MSS=$(iptables -t mangle -C POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu >/dev/null 2>&1 && echo active || echo missing)"
           echo "NODE=$(docker inspect -f "{{.State.Status}}" remnanode 2>/dev/null)"
           echo "DISK=$(df --output=pcent / | tail -1 | tr -d " %")"
         ' 2>/dev/null || true)
@@ -187,6 +191,24 @@ if [[ -n "$SSH_PORT" ]] && command -v ssh >/dev/null 2>&1; then
       ok "BBR включён"
     else
       warn "BBR не активен, скорость будет хуже"
+    fi
+
+    if grep -q "RMEM=1048576" <<<"$R" && grep -q "CONNTRACK=262144" <<<"$R"; then
+      ok "сетевые буферы и conntrack соответствуют профилю khilios"
+    else
+      warn "тюнинг буферов/conntrack неполный — перезапусти deploy-node.sh"
+    fi
+
+    if grep -q "NOFILE=.*1048576" <<<"$R"; then
+      ok "лимит nofile контейнера = 1048576"
+    else
+      warn "лимит nofile контейнера не подтверждён"
+    fi
+
+    if grep -q "MSS=active" <<<"$R"; then
+      ok "MSS clamping активен"
+    else
+      bad "MSS clamping отсутствует — мобильные сети могут зависать"
     fi
 
     if grep -q "NODE=running" <<<"$R"; then

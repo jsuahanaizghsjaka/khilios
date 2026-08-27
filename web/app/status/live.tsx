@@ -11,8 +11,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isStale, STATE_LABEL, type NodeState, type StatusDoc } from "@/lib/status";
 
-// Панель пересчитывает status.json раз в пять минут, так что чаще, чем
-// раз в полминуты, спрашивать нечего: увидим тот же файл.
+// Панель пересчитывает status.json раз в минуту. Полминуты дают странице
+// показать новый снимок без ручного обновления и без прямого доступа к панели.
 const POLL_MS = 30_000;
 
 // Состояние узла → тон плитки. Отдельной картой, а не подстановкой в класс:
@@ -191,6 +191,7 @@ export function LiveStatus({
             <tr>
               <th scope="col">Узел</th>
               <th scope="col">Регион</th>
+              <th scope="col">Режим</th>
               <th scope="col">Состояние</th>
               <th scope="col">Отклик</th>
               <th scope="col">Проверен</th>
@@ -201,6 +202,10 @@ export function LiveStatus({
               <tr key={node.name}>
                 <td>{node.name}</td>
                 <td>{node.region}</td>
+                <td>
+                  {node.mode ?? "Основной"}
+                  {node.transport ? <span className="small muted"><br />{node.transport}</span> : null}
+                </td>
                 <td>
                   {/* Кружок дублируется словом: по одному цвету состояние
                       не прочитает дальтоник. */}
@@ -220,7 +225,7 @@ export function LiveStatus({
       <p className="small muted">
         Проверено панелью{" "}
         <span className="mono">{formatTime(doc.generated_at)}</span> по
-        московскому времени, проверка идёт каждые пять минут.
+        московскому времени, проверка идёт каждую минуту.
         {checkedAt !== null && " Страница обновляется сама, перезагружать не нужно."}
       </p>
     </>

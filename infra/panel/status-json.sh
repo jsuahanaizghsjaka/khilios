@@ -2,8 +2,8 @@
 #
 # khilios — генератор status.json для публичной страницы статуса.
 #
-# Запускается на панельной VPS по cron раз в 5 минут:
-#   */5 * * * * /opt/khilios/infra/panel/status-json.sh >> /var/log/khilios-status.log 2>&1
+# Запускается на панельной VPS systemd-таймером раз в минуту. Установщик:
+#   /opt/khilios/infra/panel/install-status-monitor.sh
 #
 # Результат кладётся туда, откуда его отдаёт веб-сервер панели, а сайт на
 # Vercel читает его по STATUS_URL и показывает.
@@ -22,6 +22,8 @@ NODES_CONF="${NODES_CONF:-/etc/khilios/nodes.conf}"
 OVERRIDE="${OVERRIDE:-/etc/khilios/status-override}"
 OUT="${OUT:-/var/www/status/status.json}"
 TIMEOUT="${TIMEOUT:-4}"
+STATE_DIR="${STATE_DIR:-/var/lib/khilios-status}"
+ALERT_ENV="${ALERT_ENV:-/etc/khilios/status-monitor.env}"
 
 log() { printf '[%s] %s\n' "$(date -u +%F' '%T)" "$*"; }
 
@@ -29,12 +31,12 @@ command -v jq >/dev/null || { log "ОШИБКА: нужен jq (apt install jq)"
 [[ -f $NODES_CONF ]] || { log "ОШИБКА: нет $NODES_CONF"; exit 1; }
 
 # nodes.conf — по строке на ноду, поля через |
-#   имя|регион|адрес|порт
+#   имя|регион|адрес|порт|режим|транспорт
 # Имя и регион уходят наружу, адрес и порт — нет. В status.json адреса не попадают:
 # публичный список серверов это подарок тому, кто их блокирует.
 #
-#   fi-1|Финляндия|203.0.113.20|4443
-#   nl-1|Нидерланды|198.51.100.7|9443
+#   fi-protect|Финляндия|hel1.example.net|443|Защита|XHTTP + Reality
+#   fi-mobile|Финляндия|hel1.example.net|8443|Мобильный|gRPC + Reality
 
 # status-override — ручное переопределение, по строке на ноду:
 #   fi-1=down
@@ -43,18 +45,58 @@ command -v jq >/dev/null || { log "ОШИБКА: нужен jq (apt install jq)"
 
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 entries=()
+mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR"
 
-while IFS='|' read -r name region host port; do
+# Необязательный root-only файл:
+#   STATUS_ALERT_BOT_TOKEN=...
+#   STATUS_ALERT_CHAT_ID=...
+# Алерты идут только владельцу. Пользователям статус показывается по кнопке.
+if [[ -r $ALERT_ENV ]]; then
+  # shellcheck disable=SC1090
+  source "$ALERT_ENV"
+fi
+
+alert_owner() {
+  local message=$1
+  [[ -n "${STATUS_ALERT_BOT_TOKEN:-}" && -n "${STATUS_ALERT_CHAT_ID:-}" ]] || return 0
+  local payload
+  payload=$(jq -nc --arg chat_id "$STATUS_ALERT_CHAT_ID" --arg text "$message" \
+    '{chat_id: $chat_id, text: $text, disable_web_page_preview: true}')
+  curl -fsS --max-time 8 -H 'Content-Type: application/json' \
+    -d "$payload" "https://api.telegram.org/bot${STATUS_ALERT_BOT_TOKEN}/sendMessage" \
+    >/dev/null || log "ПРЕДУПРЕЖДЕНИЕ: алерт владельцу не отправлен"
+}
+
+while IFS='|' read -r name region host port mode transport; do
   # пустые строки и комментарии
   [[ -z "${name// /}" || "$name" == \#* ]] && continue
 
   name="${name// /}"
   port="${port:-4443}"
+  mode="${mode:-Основной}"
+  transport="${transport:-TCP}"
 
-  state=down
+  if [[ ! $host =~ ^[A-Za-z0-9._:-]+$ || ! $port =~ ^[0-9]+$ ]] \
+      || (( port < 1 || port > 65535 )); then
+    log "$name: некорректный адрес или порт в nodes.conf, строка пропущена"
+    continue
+  fi
+
+  state_key=$(printf '%s' "$name" | tr -c 'A-Za-z0-9_.-' '_')
+  failures_file="$STATE_DIR/$state_key.failures"
+  previous_file="$STATE_DIR/$state_key.state"
+  failures=0
+  [[ -r $failures_file ]] && read -r failures < "$failures_file" || true
+  [[ $failures =~ ^[0-9]+$ ]] || failures=0
+  previous=unknown
+  [[ -r $previous_file ]] && read -r previous < "$previous_file" || true
+
+  state=degraded
   latency_ms=null
   started_ms=$(date +%s%3N)
   if timeout "$TIMEOUT" bash -c "</dev/tcp/$host/$port" 2>/dev/null; then
+    failures=0
     state=up
     finished_ms=$(date +%s%3N)
     latency_ms=$((finished_ms - started_ms))
@@ -65,12 +107,22 @@ while IFS='|' read -r name region host port; do
     if ((latency_ms > 450)); then
       state=degraded
     fi
+  else
+    failures=$((failures + 1))
+    # Одиночная потеря пакета не превращает рабочую локацию в аварию.
+    # Down ставится только после трёх последовательных неудач.
+    if (( failures >= 3 )); then
+      failures=3
+      state=down
+    fi
   fi
+  printf '%s\n' "$failures" > "$failures_file"
 
   # Ручное переопределение сильнее автопроверки: человек знает про
   # блокировку то, чего не знает TCP-соединение из-за границы.
   if [[ -f $OVERRIDE ]]; then
-    forced=$(grep -E "^${name}=" "$OVERRIDE" 2>/dev/null | tail -n1 | cut -d= -f2 | tr -d '[:space:]' || true)
+    forced=$(awk -F= -v wanted="$name" '$1 == wanted { value=$2 } END { print value }' \
+      "$OVERRIDE" 2>/dev/null | tr -d '[:space:]' || true)
     if [[ -n "$forced" ]]; then
       case "$forced" in
         up|degraded|down)
@@ -82,15 +134,27 @@ while IFS='|' read -r name region host port; do
     fi
   fi
 
-  log "$name ($region): $state"
+  if [[ $state != "$previous" ]]; then
+    if [[ $state == down ]]; then
+      alert_owner "🔴 khilios: ${region} · ${mode} не отвечает три проверки подряд. Пользовательской рассылки нет; проверьте ноду и статус."
+    elif [[ $previous == down && $state == up ]]; then
+      alert_owner "🟢 khilios: ${region} · ${mode} снова отвечает."
+    fi
+  fi
+  printf '%s\n' "$state" > "$previous_file"
+
+  log "$name ($region · $mode): $state"
 
   entries+=("$(jq -nc \
     --arg name "$name" \
     --arg region "$region" \
+    --arg mode "$mode" \
+    --arg transport "$transport" \
     --arg state "$state" \
     --arg checked_at "$now" \
     --argjson latency_ms "$latency_ms" \
-    '{name: $name, region: $region, state: $state, checked_at: $checked_at,
+    '{name: $name, region: $region, mode: $mode, transport: $transport,
+      state: $state, checked_at: $checked_at,
       latency_ms: $latency_ms}')")
 done < "$NODES_CONF"
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from aiogram import F, Router
@@ -11,9 +12,11 @@ from aiogram.types import CallbackQuery, Message
 from .. import fmt, incidents, keyboards as kb, screens, texts
 from ..config import Config
 from ..db import Db, User
+from ..panel import PanelClient, PanelError, PanelUnavailable
 from ..plans import BY_ID
 
 router = Router()
+log = logging.getLogger(__name__)
 
 NODES = {
     "se": "Швеция",
@@ -21,6 +24,25 @@ NODES = {
     "nl": "Нидерланды",
     "fi": "Финляндия",
 }
+
+MODE_INFO = {
+    "protect": ("🛡️", "Защита"),
+    "mobile": ("📱", "Мобильный"),
+    "speed": ("⚡", "Скорость"),
+    "smart": ("🏦", "Умный"),
+    "resilient": ("🧱", "Не подключается?"),
+}
+
+
+def available_modes(config: Config) -> set[str]:
+    available = {"protect", "smart"}
+    if config.panel_mobile_squads:
+        available.add("mobile")
+    if config.panel_speed_squads:
+        available.add("speed")
+    if config.panel_resilient_squads:
+        available.add("resilient")
+    return available
 
 
 @dataclass(frozen=True)
@@ -271,6 +293,136 @@ async def node_status(call: CallbackQuery, config: Config) -> None:
 
     await screens.edit(call, screens.MENU, text, kb.back_to_menu())
     await call.answer()
+
+
+@router.callback_query(F.data == kb.CB_MODES)
+async def connection_modes(call: CallbackQuery, config: Config, db: Db) -> None:
+    user = await db.get_or_create(call.from_user.id)
+    if user.state != "active" or not user.panel_uuid:
+        await call.answer("Режимы доступны для активной платной подписки.", show_alert=True)
+        return
+
+    current = await db.get_mode(call.from_user.id)
+    current_label = MODE_INFO.get(current, MODE_INFO["mobile"])[1]
+    await screens.edit(
+        call,
+        screens.CONNECT,
+        texts.MODES.format(current=current_label),
+        kb.modes(current, available_modes(config)),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith(kb.CB_MODE))
+async def switch_mode(
+    call: CallbackQuery,
+    config: Config,
+    db: Db,
+    panel: PanelClient,
+) -> None:
+    mode = call.data.removeprefix(kb.CB_MODE)
+    if mode not in MODE_INFO:
+        await call.answer()
+        return
+
+    user = await db.get_or_create(call.from_user.id)
+    if user.state != "active" or not user.panel_uuid or not user.sub_url:
+        await call.answer("Нужна активная платная подписка.", show_alert=True)
+        return
+
+    squads = config.squads_for_mode(mode)
+    if mode not in available_modes(config) or not squads:
+        await call.answer(texts.MODE_UNAVAILABLE, show_alert=True)
+        return
+
+    await call.answer("Переключаю режим…")
+    try:
+        await panel.set_squads(user.panel_uuid, squads)
+    except (PanelError, PanelUnavailable) as exc:
+        # В ответ пользователю не включаем тело ошибки панели: оно может
+        # содержать внутренние имена, а для поддержки достаточно лога.
+        log.error(
+            "Не переключён режим %s для %s: %s", mode, call.from_user.id, exc
+        )
+        await screens.edit(
+            call,
+            screens.SUPPORT,
+            texts.ERROR_GENERIC,
+            kb.support(config.support_url, config.channel),
+        )
+        return
+
+    await db.set_mode(call.from_user.id, mode)
+
+    if mode == "resilient":
+        await screens.edit(
+            call,
+            screens.CONNECT,
+            texts.RESILIENT_APPLIED,
+            kb.problem_operator(
+                sub_url=user.sub_url, web_pay_host=config.web_pay_host
+            ),
+        )
+        return
+
+    icon, name = MODE_INFO[mode]
+    note = (
+        "После обновления добавьте клиентский профиль «Умный режим» кнопкой ниже."
+        if mode == "smart"
+        else "Если сеть не принимает новый транспорт, вернитесь в «Мобильный»."
+    )
+    await screens.edit(
+        call,
+        screens.CONNECT,
+        texts.MODE_APPLIED.format(icon=icon, name=name, note=note),
+        kb.mode_applied(
+            smart=mode == "smart",
+            sub_url=user.sub_url,
+            web_pay_host=config.web_pay_host,
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith(kb.CB_PROBLEM_OPERATOR))
+async def problem_operator(call: CallbackQuery) -> None:
+    operator = call.data.removeprefix(kb.CB_PROBLEM_OPERATOR)
+    if operator not in {"mts", "megafon", "beeline", "t2", "yota", "other"}:
+        await call.answer()
+        return
+    await screens.edit(
+        call,
+        screens.CONNECT,
+        texts.PROBLEM_REGION,
+        kb.problem_region(operator),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith(kb.CB_PROBLEM_REGION))
+async def problem_region(call: CallbackQuery, db: Db) -> None:
+    payload = call.data.removeprefix(kb.CB_PROBLEM_REGION)
+    operator, sep, region = payload.partition(":")
+    if not sep:
+        await call.answer()
+        return
+    try:
+        mode = await db.get_mode(call.from_user.id)
+        await db.add_connectivity_report(
+            call.from_user.id,
+            operator=operator,
+            region=region,
+            mode=mode,
+        )
+    except ValueError:
+        await call.answer()
+        return
+    await screens.edit(
+        call,
+        screens.CONNECT,
+        texts.PROBLEM_RECORDED,
+        kb.back_to_menu(),
+    )
+    await call.answer("Записано")
 
 
 @router.callback_query(F.data == kb.CB_INSTALL)

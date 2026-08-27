@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 EP_USERS = "/api/users"
 EP_USER = "/api/users/{user_id}"
-EP_USER_BY_USERNAME = "/api/users/by-username/{username}"
+EP_USERS_STREAM = "/api/users/stream"
 EP_EXTEND = "/api/users/{user_id}/actions/extend"
 EP_DISABLE = "/api/users/{user_id}/actions/disable"
 
@@ -103,6 +103,7 @@ class PanelClient:
         days: int,
         devices: int,
         tag: str,
+        squads: tuple[str, ...] | None = None,
     ) -> tuple[str, str, str]:
         """Создать пользователя. Возвращает (uuid, ссылка на подписку, expires_at).
 
@@ -123,30 +124,40 @@ class PanelClient:
             "description": tag,
             # Без группы пользователь существует, но его подписка не содержит
             # ни одного узла — внешне это выглядит как нерабочий ключ.
-            "activeInternalSquads": list(self._internal_squads),
+            "activeInternalSquads": list(squads or self._internal_squads),
         }
 
         data = await self._request("POST", EP_USERS, json=body)
         return _extract(data, expires)
 
     async def get_by_telegram_id(self, telegram_id: int) -> dict | None:
-        """Найти пользователя по стабильному имени, которое создаёт бот.
+        """Найти пользователя через stream-фильтр Remnawave v3.
 
-        Отдельного маршрута ``by-telegram-id`` в Remnawave 2.8 нет. Имя
-        ``tg<id>`` уникально и не содержит пользовательских данных кроме уже
-        известного Telegram ID.
+        В v3 маршруты ``by-telegram-id`` удалены. Поиск по username пока
+        существует, но telegramId — фактический стабильный ключ интеграции,
+        поэтому не подменяем его соглашением об имени.
         """
-        try:
-            data = await self._request(
-                "GET",
-                EP_USER_BY_USERNAME.format(username=f"tg{telegram_id}"),
-            )
-        except PanelError:
+        data = await self._request(
+            "GET",
+            EP_USERS_STREAM,
+            params={"telegramId": telegram_id, "size": 2},
+        )
+        users = data.get("users", [])
+        if not users:
             return None
-        return data or None
+        if len(users) > 1:
+            raise PanelError(
+                f"Панель вернула несколько пользователей для telegramId={telegram_id}"
+            )
+        return users[0]
 
     async def extend(
-        self, user_id: str, *, days: int, devices: int
+        self,
+        user_id: str,
+        *,
+        days: int,
+        devices: int,
+        squads: tuple[str, ...] | None = None,
     ) -> tuple[str, str, str]:
         """Продлить подписку средствами самой панели.
 
@@ -165,11 +176,31 @@ class PanelClient:
             "status": "ACTIVE",
             "hwidDeviceLimit": devices,
         }
+        if squads is not None:
+            body["activeInternalSquads"] = list(squads)
         data = await self._request("PATCH", EP_USERS, json=body)
         expires = data.get("expireAt") or extended.get("expireAt")
         if not expires:
             raise PanelError("После продления панель не вернула expireAt")
         return _extract(data, expires, fallback_id=str(numeric_id))
+
+    async def set_squads(self, user_id: str, squads: tuple[str, ...]) -> dict:
+        """Атомарно заменить доступные пользователю режимы.
+
+        Ссылка подписки при этом не перевыпускается: Remnawave меняет только
+        состав доступных inbound'ов, а пользователь обновляет тот же URL.
+        """
+        if not squads:
+            raise ValueError("Нельзя оставить пользователя без squad'ов")
+        numeric_id = _numeric_id(user_id)
+        return await self._request(
+            "PATCH",
+            EP_USERS,
+            json={
+                "id": numeric_id,
+                "activeInternalSquads": list(dict.fromkeys(squads)),
+            },
+        )
 
     async def disable(self, user_id: str) -> None:
         numeric_id = _numeric_id(user_id)

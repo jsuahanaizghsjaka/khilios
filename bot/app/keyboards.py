@@ -22,6 +22,10 @@ CB_SUB = "sub"
 CB_INSTALL = "install"
 CB_SUPPORT = "support"
 CB_STATUS = "status"
+CB_MODES = "modes"
+CB_MODE = "mode:"  # + protect/mobile/speed/smart/resilient
+CB_PROBLEM_OPERATOR = "problem_operator:"  # + operator code
+CB_PROBLEM_REGION = "problem_region:"  # + operator + ":" + region code
 CB_BUY = "buy:"  # + plan_id — открывает выбор способа оплаты
 CB_PAY = "pay:"  # + plan_id + ":" + method (card / stars / crypto)
 
@@ -36,6 +40,10 @@ def happ_telegram_url(web_pay_host: str) -> str:
     нет — профиль один и тот же для всех, собирается на нашей стороне.
     """
     return f"https://{web_pay_host.strip().strip('/')}/pay/happ/telegram"
+
+
+def happ_smart_url(web_pay_host: str) -> str:
+    return f"https://{web_pay_host.strip().strip('/')}/pay/happ/smart"
 
 
 def happ_connect_url(sub_url: str, web_pay_host: str) -> str:
@@ -67,11 +75,12 @@ def menu(*, has_sub: bool, can_trial: bool) -> InlineKeyboardMarkup:
         kb.button(text="🎁 Попробовать 7 дней", callback_data=CB_TRIAL)
     if has_sub:
         kb.button(text="🔐 Моя подписка", callback_data=CB_SUB)
+        kb.button(text="🧭 Режим подключения", callback_data=CB_MODES)
     kb.button(text="💳 Тарифы", callback_data=CB_TARIFFS)
     kb.button(text="📲 Как подключить", callback_data=CB_INSTALL)
     kb.button(text="📡 Посмотреть статусы", callback_data=CB_STATUS)
     kb.button(text="🛟 Поддержка", callback_data=CB_SUPPORT)
-    kb.adjust(1, 1, 2, 1, 1)
+    kb.adjust(1)
     return kb.as_markup()
 
 
@@ -219,7 +228,87 @@ def active_subscription(sub_url: str, web_pay_host: str) -> InlineKeyboardMarkup
         url=happ_connect_url(sub_url, web_pay_host),
     )
     kb.button(text="✈️ Только Telegram через VPN", url=happ_telegram_url(web_pay_host))
+    kb.button(text="🧭 Режим подключения", callback_data=CB_MODES)
     kb.button(text="🔄 Продлить подписку", callback_data=CB_TARIFFS)
     kb.button(text="🏠 В меню", callback_data=CB_MENU)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def modes(current: str, available: set[str]) -> InlineKeyboardMarkup:
+    labels = (
+        ("protect", "🛡️ Защита"),
+        ("mobile", "📱 Мобильный"),
+        ("speed", "⚡ Скорость"),
+        ("smart", "🏦 Умный"),
+        ("resilient", "🧱 Не подключается?"),
+    )
+    kb = InlineKeyboardBuilder()
+    for mode, label in labels:
+        marker = " · выбран" if mode == current else ""
+        suffix = " · скоро" if mode not in available else ""
+        kb.button(
+            text=f"{label}{marker}{suffix}",
+            callback_data=f"{CB_MODE}{mode}",
+        )
+    kb.button(text="🏠 В меню", callback_data=CB_MENU)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def mode_applied(
+    *,
+    smart: bool,
+    sub_url: str,
+    web_pay_host: str,
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    if smart:
+        kb.button(
+            text="🏦 Добавить «Умный режим» в Happ",
+            url=happ_smart_url(web_pay_host),
+        )
+    kb.button(
+        text="🔄 Обновить подписку в Happ",
+        url=happ_connect_url(sub_url, web_pay_host),
+    )
+    kb.button(text="← К режимам", callback_data=CB_MODES)
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def problem_operator(
+    *, sub_url: str = "", web_pay_host: str = ""
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    if sub_url and web_pay_host:
+        kb.button(
+            text="🔄 Обновить подписку в Happ",
+            url=happ_connect_url(sub_url, web_pay_host),
+        )
+    for code, label in (
+        ("mts", "МТС"),
+        ("megafon", "МегаФон"),
+        ("beeline", "Билайн"),
+        ("t2", "T2"),
+        ("yota", "Yota"),
+        ("other", "Другой"),
+    ):
+        kb.button(text=label, callback_data=f"{CB_PROBLEM_OPERATOR}{code}")
+    kb.adjust(1, 2, 2, 2)
+    return kb.as_markup()
+
+
+def problem_region(operator: str) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for code, label in (
+        ("moscow", "Москва и область"),
+        ("spb", "Петербург и область"),
+        ("other", "Другой регион"),
+    ):
+        kb.button(
+            text=label,
+            callback_data=f"{CB_PROBLEM_REGION}{operator}:{code}",
+        )
     kb.adjust(1)
     return kb.as_markup()

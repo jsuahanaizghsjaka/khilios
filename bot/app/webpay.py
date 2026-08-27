@@ -16,6 +16,10 @@
                                    «Telegram»: через туннель идёт только он,
                                    остальное напрямую. См. happ_routing.py.
 
+  GET  /pay/happ/smart          — добавляет «Умный режим»: банки,
+                                   госсервисы и локальная сеть напрямую,
+                                   остальной трафик через VPN.
+
   GET  /pay/{order_id}/return   — куда браузер возвращается после оплаты
                                    на странице ЮKassa. Косметика для
                                    человека, НЕ источник истины о платеже:
@@ -26,12 +30,19 @@
                                    место, где заказ реально закрывается,
                                    и именно оно не доверяет присланному
                                    телу — см. предупреждение в yookassa.py.
+
+  POST /pay/webhook/remnawave   — HMAC-подписанные события панели. Потеря
+                                   ноды уходит только владельцу, массовых
+                                   пользовательских рассылок здесь нет.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
+import hashlib
+import hmac
 import html
 import json
 import logging
@@ -183,6 +194,19 @@ async def handle_happ_telegram(request: web.Request) -> web.Response:
     )
 
 
+async def handle_happ_smart(request: web.Request) -> web.Response:
+    """Добавить клиентский split-tunnel «Умный режим» в Happ."""
+    return _happ_page(
+        happ_routing.smart_deep_link(),
+        heading="Добавляем «Умный режим»…",
+        body=(
+            "После добавления включите его в Happ в разделе «Маршрутизация». "
+            "Банки, Госуслуги и локальная сеть пойдут напрямую, остальное — "
+            "через защищённое подключение."
+        ),
+    )
+
+
 def _happ_page(deep_link: str, *, heading: str, body: str) -> web.Response:
     page = HAPP_PAGE.format(
         heading=html.escape(heading),
@@ -303,6 +327,60 @@ async def handle_webhook(request: web.Request) -> web.Response:
     return web.Response(status=200)
 
 
+async def handle_remnawave_webhook(request: web.Request) -> web.Response:
+    """Принять событие Remnawave после проверки HMAC-SHA256.
+
+    Панель подписывает точные байты JSON заголовком X-Remnawave-Signature.
+    Поэтому тело читается один раз как bytes и только затем разбирается.
+    Ответ отдаётся сразу; короткая обработка выполняется отдельной задачей.
+    """
+    config: Config = request.app["config"]
+    secret = config.remnawave_webhook_secret
+    if not secret:
+        raise web.HTTPNotFound()
+
+    raw = await request.read()
+    supplied = request.headers.get("X-Remnawave-Signature", "")
+    expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    if not supplied or not hmac.compare_digest(expected, supplied):
+        log.warning("Вебхук Remnawave: неверная HMAC-подпись")
+        raise web.HTTPUnauthorized(text="invalid signature")
+
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise web.HTTPBadRequest(text="invalid json") from None
+    if not isinstance(payload, dict):
+        raise web.HTTPBadRequest(text="invalid payload")
+
+    task = asyncio.create_task(
+        _process_remnawave_event(request.app["bot"], config, payload)
+    )
+    tasks: set[asyncio.Task] = request.app["webhook_tasks"]
+    tasks.add(task)
+    task.add_done_callback(tasks.discard)
+    return web.json_response({"ok": True})
+
+
+async def _process_remnawave_event(
+    bot: Bot, config: Config, payload: dict
+) -> None:
+    """Алертить владельца о нодах/инфраструктуре, не писать пользователям."""
+    event = str(payload.get("event") or "")[:100]
+    data = payload.get("data")
+    data = data if isinstance(data, dict) else {}
+    name = str(data.get("name") or data.get("nodeName") or "неизвестная нода")[:100]
+
+    if event == "node.connection_lost":
+        await _alert_admin(bot, config, f"🔴 Remnawave: потеряна связь с нодой {name}.")
+    elif event == "node.connection_restored":
+        await _alert_admin(bot, config, f"🟢 Remnawave: связь с нодой {name} восстановлена.")
+    elif event.startswith("errors."):
+        await _alert_admin(bot, config, f"⚠️ Remnawave: событие {event}.")
+    else:
+        log.info("Вебхук Remnawave принят: %s", event or "без event")
+
+
 async def _find_order_by_payment(db: Db, yk_payment_id: str) -> dict | None:
     async with db.conn.execute(
         "SELECT order_id, telegram_id, plan_id, amount_rub, status "
@@ -334,12 +412,16 @@ def build_app(
     app["bot"] = bot
     app["config"] = config
     app["yookassa"] = yookassa
+    app["webhook_tasks"] = set()
 
     app.router.add_get("/pay/happ", handle_happ)
     app.router.add_get("/pay/happ/telegram", handle_happ_telegram)
+    app.router.add_get("/pay/happ/smart", handle_happ_smart)
     if yookassa is not None:
         app.router.add_get("/pay/{order_id}/return", handle_return)
         app.router.add_post("/pay/webhook/yookassa", handle_webhook)
+    if config.remnawave_webhook_secret:
+        app.router.add_post("/pay/webhook/remnawave", handle_remnawave_webhook)
 
     return app
 

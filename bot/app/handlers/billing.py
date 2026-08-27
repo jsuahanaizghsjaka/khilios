@@ -356,11 +356,16 @@ async def grant(
     user = await db.get_or_create(telegram_id)
 
     is_renewal = bool(user.panel_uuid)
+    paid_squads = getattr(config, "paid_squads", None)
+    squad_kwargs = {"squads": paid_squads} if paid_squads else {}
 
     try:
         if is_renewal:
             uuid, sub_url, expires_at = await panel.extend(
-                user.panel_uuid, days=plan.days, devices=plan.devices
+                user.panel_uuid,
+                days=plan.days,
+                devices=plan.devices,
+                **squad_kwargs,
             )
         else:
             uuid, sub_url, expires_at = await panel.create_user(
@@ -368,6 +373,7 @@ async def grant(
                 days=plan.days,
                 devices=plan.devices,
                 tag=plan.id,
+                **squad_kwargs,
             )
     except (PanelError, PanelUnavailable) as exc:
         # Худший случай: деньги взяты, ключа нет. Пользователю — честный текст
@@ -393,6 +399,10 @@ async def grant(
         sub_url=sub_url,
         expires_at=expires_at,
         devices=plan.devices,
+    )
+    await db.set_mode(
+        telegram_id,
+        "mobile" if getattr(config, "panel_mobile_squads", ()) else "protect",
     )
 
     await bot.send_photo(

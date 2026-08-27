@@ -3,6 +3,30 @@ from __future__ import annotations
 from app.config import load
 
 
+def test_mode_squads_are_composed_without_duplicates(monkeypatch) -> None:
+    base = "11111111-1111-4111-8111-111111111111"
+    mobile = "22222222-2222-4222-8222-222222222222"
+    speed = "33333333-3333-4333-8333-333333333333"
+    values = {
+        "BOT_TOKEN": "123456:test",
+        "ADMIN_TELEGRAM_ID": "42",
+        "PANEL_API_TOKEN": "panel-token",
+        "PANEL_INTERNAL_SQUADS": base,
+        "PANEL_PROTECT_SQUADS": base,
+        "PANEL_MOBILE_SQUADS": f"{base},{mobile}",
+        "PANEL_SPEED_SQUADS": speed,
+        "CHANNEL_USERNAME": "@khiliosvpn",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+
+    config = load()
+
+    assert config.paid_squads == (base, mobile)
+    assert config.squads_for_mode("speed") == (base, speed)
+    assert config.squads_for_mode("resilient") == ()
+
+
 def test_load_accepts_docker_run_env_file_quotes(monkeypatch) -> None:
     values = {
         "BOT_TOKEN": '"123456:test"',

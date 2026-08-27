@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -65,6 +66,33 @@ def _uuid_list_req(name: str) -> tuple[str, ...]:
         raise RuntimeError(
             f"{name} должен быть списком UUID через запятую, получено {raw!r}"
         ) from exc
+
+
+def _uuid_list_opt(name: str) -> tuple[str, ...]:
+    """Необязательный список UUID.
+
+    Отдельные squad'ы режимов вводятся постепенно. Пустая переменная должна
+    выключать только конкретный режим, а не ронять уже работающий бот.
+    """
+    raw = _opt(name)
+    if not raw:
+        return ()
+    values = tuple(part.strip() for part in raw.split(",") if part.strip())
+    try:
+        return tuple(str(uuid.UUID(value)) for value in values)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"{name} должен быть списком UUID через запятую, получено {raw!r}"
+        ) from exc
+
+
+def _webhook_secret_opt(name: str) -> str:
+    value = _opt(name)
+    if value and not re.fullmatch(r"[A-Za-z0-9]{32,}", value):
+        raise RuntimeError(
+            f"{name} должен содержать минимум 32 латинские буквы/цифры"
+        )
+    return value
 
 
 @dataclass(frozen=True)
@@ -129,6 +157,15 @@ class Config:
     # без сети и без авторизации.
     status_json_path: str
 
+    # Режимы Remnawave. PANEL_INTERNAL_SQUADS остаётся безопасным fallback,
+    # поэтому старый env продолжает работать до создания отдельных squad'ов.
+    panel_trial_squads: tuple[str, ...] = ()
+    panel_protect_squads: tuple[str, ...] = ()
+    panel_mobile_squads: tuple[str, ...] = ()
+    panel_speed_squads: tuple[str, ...] = ()
+    panel_resilient_squads: tuple[str, ...] = ()
+    remnawave_webhook_secret: str = ""
+
     @property
     def card_enabled(self) -> bool:
         """Карта и СБП через Telegram Payments (форма внутри Telegram)."""
@@ -161,6 +198,42 @@ class Config:
     def antifraud_age_enabled(self) -> bool:
         return self.trial_max_telegram_id is not None
 
+    @staticmethod
+    def _merge_squads(*groups: tuple[str, ...]) -> tuple[str, ...]:
+        # dict сохраняет порядок и убирает дубли: порядок squad'ов затем
+        # стабильно попадает в ответы панели и проще сравнивается в тестах.
+        return tuple(dict.fromkeys(item for group in groups for item in group))
+
+    @property
+    def protect_squads(self) -> tuple[str, ...]:
+        return self.panel_protect_squads or self.panel_internal_squads
+
+    @property
+    def paid_squads(self) -> tuple[str, ...]:
+        return self._merge_squads(self.protect_squads, self.panel_mobile_squads)
+
+    @property
+    def trial_squads(self) -> tuple[str, ...]:
+        return self.panel_trial_squads or self.protect_squads
+
+    def squads_for_mode(self, mode: str) -> tuple[str, ...]:
+        """Полный состав squad'ов для атомарного переключения режима."""
+        if mode == "protect":
+            return self.protect_squads
+        if mode in {"mobile", "smart"}:
+            return self.paid_squads
+        if mode == "speed":
+            if not self.panel_speed_squads:
+                return ()
+            return self._merge_squads(self.protect_squads, self.panel_speed_squads)
+        if mode == "resilient":
+            if not self.panel_resilient_squads:
+                return ()
+            return self._merge_squads(
+                self.protect_squads, self.panel_resilient_squads
+            )
+        return ()
+
 
 def load() -> Config:
     return Config(
@@ -184,4 +257,12 @@ def load() -> Config:
         trial_max_telegram_id=_int_opt("TRIAL_MAX_TELEGRAM_ID"),
         db_path=_opt("DB_PATH", "/data/khilios.sqlite3"),
         status_json_path=_opt("STATUS_JSON_PATH", "/var/www/status/status.json"),
+        panel_trial_squads=_uuid_list_opt("PANEL_TRIAL_SQUADS"),
+        panel_protect_squads=_uuid_list_opt("PANEL_PROTECT_SQUADS"),
+        panel_mobile_squads=_uuid_list_opt("PANEL_MOBILE_SQUADS"),
+        panel_speed_squads=_uuid_list_opt("PANEL_SPEED_SQUADS"),
+        panel_resilient_squads=_uuid_list_opt("PANEL_RESILIENT_SQUADS"),
+        remnawave_webhook_secret=_webhook_secret_opt(
+            "REMNAWAVE_WEBHOOK_SECRET"
+        ),
     )

@@ -40,6 +40,7 @@ import base64
 import json
 
 PROFILE_NAME = "Telegram"
+SMART_PROFILE_NAME = "Умный режим"
 
 # Домены Telegram и всё, что он тянет: медиа, превью ссылок, статика
 # клиентов. Без cdn-доменов картинки и видео поедут напрямую и упрутся
@@ -72,6 +73,44 @@ TELEGRAM_IPS = (
     "2001:b28:f23c::/47",
     "2001:b28:f23f::/48",
     "2a0a:f280::/32",
+)
+
+# Сервисы, которым нужен российский адрес. Явные суффиксы работают без
+# зависимости от версии geosite-файлов в конкретной сборке Happ.
+SMART_DIRECT_DOMAINS = (
+    "domain:sberbank.ru",
+    "domain:sber.ru",
+    "domain:tbank.ru",
+    "domain:tinkoff.ru",
+    "domain:alfabank.ru",
+    "domain:vtb.ru",
+    "domain:raiffeisen.ru",
+    "domain:gosuslugi.ru",
+    "domain:nalog.gov.ru",
+    "domain:mos.ru",
+    "domain:yookassa.ru",
+    "domain:sbp.nspk.ru",
+    "domain:nspk.ru",
+    "domain:ozon.ru",
+    "domain:wildberries.ru",
+    "domain:avito.ru",
+    "domain:2gis.ru",
+    "domain:yandex.ru",
+    "domain:vk.com",
+    "domain:mail.ru",
+    "domain:rt.ru",
+)
+
+PRIVATE_IPS = (
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "::1/128",
+    "fc00::/7",
+    "fe80::/10",
 )
 
 
@@ -116,5 +155,32 @@ def deep_link() -> str:
     обрезать его не от чего.
     """
     raw = json.dumps(profile(), ensure_ascii=False, separators=(",", ":"))
+    encoded = base64.b64encode(raw.encode()).decode()
+    return f"happ://routing/add/{encoded}"
+
+
+def smart_profile() -> dict[str, object]:
+    """Всё через VPN, а банки, госсервисы и локальная сеть — напрямую."""
+    return {
+        "Name": SMART_PROFILE_NAME,
+        "GlobalProxy": "true",
+        "RemoteDNSType": "DoH",
+        "RemoteDNSDomain": "https://dns.google/dns-query",
+        "RemoteDNSIP": "8.8.8.8",
+        "DomesticDNSType": "DoU",
+        "DomesticDNSIP": "77.88.8.8",
+        "DnsHosts": {},
+        "DirectSites": list(SMART_DIRECT_DOMAINS),
+        "DirectIp": list(PRIVATE_IPS),
+        "ProxySites": [],
+        "ProxyIp": [],
+        "BlockSites": [],
+        "BlockIp": [],
+        "DomainStrategy": "IPIfNonMatch",
+    }
+
+
+def smart_deep_link() -> str:
+    raw = json.dumps(smart_profile(), ensure_ascii=False, separators=(",", ":"))
     encoded = base64.b64encode(raw.encode()).decode()
     return f"happ://routing/add/{encoded}"
