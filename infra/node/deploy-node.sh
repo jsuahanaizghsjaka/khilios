@@ -32,9 +32,19 @@ die()  { printf '\n\033[1;31m[x] %s\033[0m\n' "$*" >&2; exit 1; }
 source ./node.env
 
 : "${NODE_NAME:?NODE_NAME не задан в node.env}"
-: "${SSL_CERT:?SSL_CERT не задан — возьми в панели: Nodes -> Create -> строка SSL_CERT}"
 : "${PANEL_IP:?PANEL_IP не задан — IP панельной VPS, только ей открывается порт ноды}"
-APP_PORT="${APP_PORT:-2222}"
+
+# Remnawave 3 использует NODE_PORT + SECRET_KEY. Старые установки ноды
+# использовали APP_PORT + SSL_CERT. Поддерживаем обе схемы, чтобы повторный
+# запуск скрипта не отрезал уже подключённую к панели ноду.
+APP_PORT="${NODE_PORT:-${APP_PORT:-2222}}"
+if [[ -n "${SECRET_KEY:-}" ]]; then
+  REMNAWAVE_ENV_MODE=secret_key
+elif [[ -n "${SSL_CERT:-}" ]]; then
+  REMNAWAVE_ENV_MODE=ssl_cert
+else
+  die "Нет SECRET_KEY (Remnawave 3) или SSL_CERT (старая нода) в node.env."
+fi
 SSH_PORT="${SSH_PORT:-22}"
 HARDEN_SSH="${HARDEN_SSH:-yes}"
 VPN_TCP_PORTS="${VPN_TCP_PORTS:-443 4443 8443}"
@@ -314,10 +324,17 @@ systemctl restart docker
 log "Разворачивание remnanode"
 install -d -m 700 /opt/remnanode
 
-cat > /opt/remnanode/.env <<EOF
+if [[ "$REMNAWAVE_ENV_MODE" == secret_key ]]; then
+  cat > /opt/remnanode/.env <<EOF
+NODE_PORT=$APP_PORT
+SECRET_KEY=$SECRET_KEY
+EOF
+else
+  cat > /opt/remnanode/.env <<EOF
 APP_PORT=$APP_PORT
 $SSL_CERT
 EOF
+fi
 chmod 600 /opt/remnanode/.env
 
 cat > /opt/remnanode/docker-compose.yml <<'EOF'
