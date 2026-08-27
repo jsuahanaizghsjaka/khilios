@@ -75,7 +75,9 @@ while IFS='|' read -r name region host port mode transport; do
   [[ -z "${name// /}" || "$name" == \#* ]] && continue
 
   name="${name// /}"
-  port="${port:-4443}"
+  # Основной Reality для DE/FI работает на стандартном HTTPS-порту. Если
+  # порт в nodes.conf не указан, проверяем 443, а не старый высокий 4443.
+  port="${port:-443}"
   mode="${mode:-Основной}"
   transport="${transport:-TCP}"
 
