@@ -116,7 +116,7 @@ Reality, XHTTP, gRPC, WebSocket, Trojan, Shadowsocks — доступно в о�
 
 ### 2. VLESS + Reality — основной
 
-Маскируется под `www.microsoft.com` с TLS 1.3. Слушает **TCP 443**, на NL —
+Маскируется под `www.cloudflare.com` с TLS 1.3. Слушает **TCP 443**, на NL —
 TCP 9443, потому что порт 443 панели занят Caddy.
 
 **Почему именно 443, а не высокий порт.** Reality притворяется обращением к
