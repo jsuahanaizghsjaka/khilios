@@ -36,10 +36,8 @@ function formatTime(iso: string): string {
   }).format(d);
 }
 
-function fastestNode(doc: StatusDoc) {
-  return doc.nodes
-    .filter((node) => node.state === "up" && typeof node.latency_ms === "number")
-    .sort((a, b) => (a.latency_ms ?? Infinity) - (b.latency_ms ?? Infinity))[0];
+function anyNodeUp(doc: StatusDoc): boolean {
+  return doc.nodes.some((node) => node.state === "up");
 }
 
 export function LiveStatus({
@@ -119,7 +117,7 @@ export function LiveStatus({
   }
 
   const stale = isStale(doc);
-  const fastest = fastestNode(doc);
+  const anyUp = anyNodeUp(doc);
 
   return (
     <>
@@ -168,15 +166,26 @@ export function LiveStatus({
           ))}
       </ul>
 
-      {fastest && (
+      {/* Раньше здесь была строка «рекомендуем сейчас», построенная сортировкой
+          по отклику от панели до узла. Отклик от панели — это расстояние от
+          дата-центра до дата-центра, а не от телефона пользователя, и он
+          ничего не знает о том, что рубит его мобильный оператор. Сама панель
+          не может честно назвать «самый быстрый узел для вас», поэтому
+          показывать это как рекомендацию значило иногда указывать на узел,
+          который у конкретного человека работает хуже прочих. Реальный выбор
+          — через «Режим подключения» в боте: он учитывает не только отклик,
+          но и то, какой канал вообще пробивается у оператора. */}
+      {anyUp && (
         <div className="notice">
           <p>
-            <strong>⚡ Рекомендуем сейчас: {fastest.region}.</strong>{" "}
-            Отклик от панели — около {fastest.latency_ms} мс.
+            <strong>Какой узел выбрать?</strong> Отклик в таблице ниже — это
+            расстояние от нашей панели до узла, а не от вашего телефона: он не
+            покажет, что именно режет ваш оператор.
           </p>
           <p className="small">
-            Это технический отклик до узла, а не обещание скорости на вашем
-            телефоне: мобильный оператор и регион влияют на результат.
+            Откройте в боте «Режим подключения» — там можно переключиться
+            между основным и резервным каналом и записать, у какого оператора
+            и региона что не идёт.
           </p>
         </div>
       )}
